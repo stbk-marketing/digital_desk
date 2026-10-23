@@ -26,7 +26,18 @@ class MutateWorkspace
             }
             $expected = $data['expected_version'] ?? null;
             unset($data['expected_version']);
-            $record = $record?->fresh();
+            if ($type === 'task' && ! empty($data['project_id'])) {
+                // Serialize assignment against project deletion; validation alone can race.
+                if (! Project::whereKey($data['project_id'])->lockForUpdate()->first()) {
+                    throw ValidationException::withMessages(['project_id' => 'Das Projekt ist nicht mehr verfügbar.']);
+                }
+            }
+            if ($record) {
+                $record = $class::withTrashed()->whereKey($record->id)->first();
+                if (! $record || $record->trashed()) {
+                    throw new HttpResponseException(response()->json(['message' => 'Der Eintrag wurde gelöscht. Ihr Entwurf bleibt erhalten.', 'deleted' => true], 409));
+                }
+            }
             $before = $record?->getAttributes();
             if ($record && (int) $record->version !== (int) $expected) {
                 throw new HttpResponseException(response()->json(['message' => 'Zwischenzeitlich geändert. Ihr Entwurf bleibt erhalten.', 'current' => $record], 409));

@@ -1,5 +1,7 @@
 export type Person = { id: number; name: string };
 export type Task = {
+    deleted_at?: string | null;
+    deleted_by?: number | null;
     id: string;
     title: string;
     notes: string | null;
@@ -16,6 +18,8 @@ export type Task = {
     created_at: string;
 };
 export type Project = {
+    deleted_at?: string | null;
+    deleted_by?: number | null;
     id: string;
     name: string;
     description: string | null;
@@ -32,7 +36,7 @@ export type Activity = {
     actor_id: number;
     event: string;
     before: Record<string, unknown> | null;
-    after: Record<string, unknown>;
+    after: Record<string, unknown> | null;
     occurred_at: string;
 };
 export type Page<T> = {
@@ -41,7 +45,11 @@ export type Page<T> = {
     current_page: number;
     last_page: number;
 };
-export type Failure = { message: string; current?: Task | Project };
+export type Failure = {
+    message: string;
+    current?: Task | Project;
+    deleted?: boolean;
+};
 
 export async function api<T>(
     path: string,

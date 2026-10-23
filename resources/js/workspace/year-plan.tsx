@@ -1,3 +1,20 @@
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
+import {
+    Table,
+    TableHeader,
+    TableBody,
+    TableRow,
+    TableHead,
+    TableCell,
+} from '@/components/ui/table';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+    NativeSelect,
+    NativeSelectOption,
+} from '@/components/ui/native-select';
 import { useEffect, useState } from 'react';
 import { api, todayBerlin } from './types';
 import type { Project } from './types';
@@ -29,11 +46,12 @@ export default function YearPlan({ revision }: { revision: number }) {
         };
     }, [year, status, revision]);
     return (
-        <section className="year-view">
-            <div className="calendar-toolbar">
-                <label>
+        <section className="year-view min-w-0 space-y-6">
+            <div className="calendar-toolbar flex flex-wrap items-end gap-3">
+                <Label className="grid gap-2">
                     Jahr{' '}
-                    <input
+                    <Input
+                        className="w-24"
                         aria-label="Jahr"
                         type="number"
                         min={1900}
@@ -46,43 +64,59 @@ export default function YearPlan({ revision }: { revision: number }) {
                         }}
                         onBlur={() => setYearInput(String(year))}
                     />
-                </label>
-                <select
+                </Label>
+                <NativeSelect
                     aria-label="Jahresplanstatus"
                     value={status}
                     onChange={(e) => setStatus(e.target.value)}
                 >
-                    <option value="">Alle inkl. Archiv</option>
-                    <option value="active">Aktiv</option>
-                    <option value="completed">Abgeschlossen</option>
-                    <option value="archived">Archiviert</option>
-                </select>
-                <a
-                    target="_blank"
-                    rel="noreferrer"
-                    href={`/reports/year/${year}/print?status=${status}`}
-                >
-                    Druckansicht / Als PDF speichern ↗
-                </a>
-                <a href={`/reports/year/${year}.csv?status=${status}`}>
-                    CSV für Excel
-                </a>
-                <a href="/reports/activities.csv">Bedienhistorie CSV</a>
+                    <NativeSelectOption value="">
+                        Alle inkl. Archiv
+                    </NativeSelectOption>
+                    <NativeSelectOption value="active">
+                        Aktiv
+                    </NativeSelectOption>
+                    <NativeSelectOption value="completed">
+                        Abgeschlossen
+                    </NativeSelectOption>
+                    <NativeSelectOption value="archived">
+                        Archiviert
+                    </NativeSelectOption>
+                </NativeSelect>
+                <Button variant="outline" asChild>
+                    <a
+                        target="_blank"
+                        rel="noreferrer"
+                        href={`/reports/year/${year}/print?status=${status}`}
+                    >
+                        Druckansicht / Als PDF speichern ↗
+                    </a>
+                </Button>
+                <Button variant="outline" asChild>
+                    <a href={`/reports/year/${year}.csv?status=${status}`}>
+                        CSV für Excel
+                    </a>
+                </Button>
+                <Button variant="outline" asChild>
+                    <a href="/reports/activities.csv">Bedienhistorie CSV</a>
+                </Button>
             </div>
-            <p className="muted">
+            <p className="text-sm text-muted-foreground">
                 Geplante Zeiträume, keine Arbeitszeitnachweise. Die Balken
                 bilden Start- und Endtage einschließlich taggenau ab.
             </p>
             {error && <p role="alert">{error}</p>}
             {report && (
                 <>
-                    <div className="year-table-wrap">
-                        <table className="year-table">
-                            <thead>
-                                <tr>
-                                    <th>Projekt / geplanter Zeitraum</th>
-                                    <th>
-                                        <div className="year-months">
+                    <div className="year-table-wrap min-w-0 overflow-hidden rounded-lg border bg-card">
+                        <Table className="year-table min-w-[650px] table-fixed [&_td]:break-words [&_td]:whitespace-normal [&_td:nth-child(2)]:p-0 [&_th:first-child]:w-[27%] [&_th:nth-child(2)]:w-[73%]">
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead className="whitespace-normal">
+                                        Projekt / geplanter Zeitraum
+                                    </TableHead>
+                                    <TableHead>
+                                        <div className="year-months flex h-10 w-full text-center [&>span]:border-l [&>span]:leading-10">
                                             {report.months.map((m) => (
                                                 <span
                                                     style={{
@@ -94,15 +128,15 @@ export default function YearPlan({ revision }: { revision: number }) {
                                                 </span>
                                             ))}
                                         </div>
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody>
+                                    </TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
                                 {report.scheduled.map((p) => (
-                                    <tr key={p.id}>
-                                        <td>
+                                    <TableRow key={p.id}>
+                                        <TableCell>
                                             <strong>{p.name}</strong>
-                                            <small>
+                                            <small className="mt-1 block text-xs text-muted-foreground">
                                                 {p.starts_on} – {p.ends_on} ·{' '}
                                                 {p.status === 'active'
                                                     ? 'Aktiv'
@@ -110,10 +144,10 @@ export default function YearPlan({ revision }: { revision: number }) {
                                                       ? 'Abgeschlossen'
                                                       : 'Archiviert'}
                                             </small>
-                                        </td>
-                                        <td>
-                                            <div className="year-track">
-                                                <div className="year-grid">
+                                        </TableCell>
+                                        <TableCell>
+                                            <div className="year-track relative h-14 w-full">
+                                                <div className="year-grid absolute inset-0 flex [&>span]:h-full [&>span]:border-l">
                                                     {report.months.map((m) => (
                                                         <span
                                                             style={{
@@ -125,34 +159,41 @@ export default function YearPlan({ revision }: { revision: number }) {
                                                 </div>
                                                 <span
                                                     title={`${p.name}: ${p.starts_on} – ${p.ends_on}`}
-                                                    className="year-bar"
+                                                    className="year-bar absolute top-5 h-3.5 min-w-px rounded-sm"
                                                     style={{
                                                         left: `${p.left}%`,
                                                         width: `${p.width}%`,
                                                         background:
                                                             p.color ||
-                                                            '#52764b',
+                                                            'var(--primary)',
                                                     }}
                                                 />
                                             </div>
-                                        </td>
-                                    </tr>
+                                        </TableCell>
+                                    </TableRow>
                                 ))}
-                            </tbody>
-                        </table>
+                            </TableBody>
+                        </Table>
                     </div>
-                    <h2>
+                    <h2 className="flex items-center gap-2 text-base font-semibold">
                         Noch nicht terminiert{' '}
-                        <small>{report.unscheduled.length}</small>
+                        <Badge variant="secondary">
+                            {report.unscheduled.length}
+                        </Badge>
                     </h2>
                     {report.unscheduled.map((p) => (
-                        <p className="unscheduled" key={p.id}>
-                            {p.name}
-                            <small>
-                                Start {p.starts_on || 'offen'} · Ende{' '}
-                                {p.ends_on || 'offen'}
-                            </small>
-                        </p>
+                        <Card
+                            className="unscheduled py-4 shadow-none"
+                            key={p.id}
+                        >
+                            <CardContent className="text-sm">
+                                {p.name}
+                                <small className="mt-1 block text-xs text-muted-foreground">
+                                    Start {p.starts_on || 'offen'} · Ende{' '}
+                                    {p.ends_on || 'offen'}
+                                </small>
+                            </CardContent>
+                        </Card>
                     ))}
                 </>
             )}

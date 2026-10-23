@@ -101,6 +101,8 @@ Deaktivierung setzt `is_active=false`, löscht bestehende Datenbanksitzungen und
 
 ## Backup und Restore
 
+Für Papierkorb, endgültige Inhaltslöschung und alte Sicherungen gilt ergänzend [PAPIERKORB.md](PAPIERKORB.md). Endgültiges Löschen bereinigt die aktive Datenbank samt zugehörigen Audit-Inhalten; vorhandene Backups behalten ihre getrennten Aufbewahrungsfristen. Vor Freigabe eines Restore müssen spätere endgültige Löschungen nachgeführt werden.
+
 Täglich unter dem berechtigten Betriebsaccount eine **neue** Datei außerhalb public erzeugen:
 
 ```sh

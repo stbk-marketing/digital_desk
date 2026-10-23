@@ -10,7 +10,7 @@ $app->make(Kernel::class)->bootstrap();
 if (getenv('WORKSPACE_BROWSER_TEST') !== '1' || ! app()->environment('local') || basename(config('database.connections.sqlite.database')) !== 'browser.sqlite') {
     exit(1);
 }
-foreach (['Anna', 'Britta'] as $name) {
+foreach (['Anna', 'Britta', 'Erika', 'Fiona'] as $name) {
     $user = User::create(['name' => $name, 'email' => strtolower($name).'@example.test', 'password' => 'Browser-test-123!']);
     $user->forceFill(['email_verified_at' => now()])->save();
 }

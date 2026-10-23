@@ -22,7 +22,7 @@ class TaskRequest extends FormRequest
             'notes' => ['sometimes', 'nullable', 'string', 'max:50000'],
             'status' => ['sometimes', Rule::in(['open', 'done'])],
             'due_on' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
-            'project_id' => ['sometimes', 'nullable', 'exists:projects,id'],
+            'project_id' => ['sometimes', 'nullable', Rule::exists('projects', 'id')->whereNull('deleted_at')],
             'assigned_to' => ['sometimes', 'nullable', Rule::exists('users', 'id')->where('is_active', true)->whereNotNull('email_verified_at')],
             'snoozed_until' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
             'archived' => ['sometimes', 'boolean'],

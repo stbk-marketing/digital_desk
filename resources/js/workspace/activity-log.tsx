@@ -10,7 +10,7 @@ export function ConflictSummary({
     projects: Project[];
 }) {
     return (
-        <div className="conflict-summary">
+        <div className="conflict-summary space-y-2 rounded-md border bg-muted/50 p-3 text-sm break-words">
             <strong>Aktueller Serverstand</strong>
             {Object.entries(record)
                 .filter(([key]) => key in labels)
@@ -86,8 +86,16 @@ export function ActivityLog({
     people: Person[];
     projects: Project[];
 }) {
+    const lifecycle: Record<string, string> = {
+        deleted: 'In den Papierkorb verschoben',
+        restored: 'Aus dem Papierkorb wiederhergestellt',
+        purged: 'Endgültig gelöscht – Inhaltsdaten entfernt',
+        project_detached: 'Wegen Projektlöschung aus dem Projekt gelöst',
+        project_reattached: 'Frühere Projektzuordnung wiederhergestellt',
+    };
     const event =
-        a.event === 'created'
+        lifecycle[a.event] ??
+        (a.event === 'created'
             ? 'Angelegt'
             : a.event === 'done'
               ? 'Als erledigt markiert'
@@ -97,13 +105,13 @@ export function ActivityLog({
                   ? 'Projekt abgeschlossen'
                   : a.event === 'archived'
                     ? 'Projekt archiviert'
-                    : Object.hasOwn(a.after, 'archived_at')
-                      ? a.after.archived_at
+                    : Object.hasOwn(a.after ?? {}, 'archived_at')
+                      ? a.after?.archived_at
                           ? 'Archiviert'
                           : 'Wiederhergestellt'
-                      : 'Geändert';
+                      : 'Geändert');
     return (
-        <article className="activity">
+        <article className="activity space-y-2 border-t pt-4 text-sm break-words [&>small]:block [&>small]:text-xs [&>small]:text-muted-foreground">
             <strong>
                 {people.find((p) => p.id === a.actor_id)?.name ??
                     'Ehemalige Person'}
@@ -120,7 +128,7 @@ export function ActivityLog({
                 ),
             )}
             <p>{event}</p>
-            {Object.entries(a.after)
+            {Object.entries(a.after ?? {})
                 .filter(([key]) => key in labels)
                 .map(([key, value]) => (
                     <small key={key}>

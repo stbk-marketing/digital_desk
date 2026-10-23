@@ -19,6 +19,7 @@ class Activity extends Model
 
     protected static function booted(): void
     {
+        // Payload erasure on permanent deletion is narrowly handled in TrashWorkspace.
         static::updating(fn () => throw new LogicException('Audit ist unveränderlich.'));
         static::deleting(fn () => throw new LogicException('Audit ist unveränderlich.'));
     }

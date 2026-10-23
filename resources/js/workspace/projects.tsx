@@ -1,13 +1,31 @@
+import {
+    Card,
+    CardContent,
+    CardHeader,
+    CardFooter,
+} from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Textarea } from '@/components/ui/textarea';
+import {
+    NativeSelect,
+    NativeSelectOption,
+} from '@/components/ui/native-select';
 import { useEffect, useRef, useState } from 'react';
 import DraftInput from './draft-input';
 import { ActivityLog, ConflictSummary } from './activity-log';
 import { api } from './types';
 import type { Activity, Failure, Page, Person, Project } from './types';
+import RecordActions, { RecoveryLinks } from './record-actions';
 
 export default function Projects({
     projects,
     people,
     refresh,
+    deleted,
     openTasks,
     projectId = '',
     query = '',
@@ -15,6 +33,7 @@ export default function Projects({
     projects: Project[];
     people: Person[];
     refresh: () => Promise<void>;
+    deleted: (id: string) => Promise<void>;
     openTasks: (id: string) => void;
     projectId?: string;
     query?: string;
@@ -114,24 +133,24 @@ export default function Projects({
             });
     }, [selected, projects, historyPage]);
     return (
-        <section className="projects-view">
+        <section className="projects-view space-y-6">
             <form
-                className="project-create"
+                className="project-create flex flex-wrap gap-3 [&>input]:min-w-0 [&>input]:flex-1"
                 onSubmit={(e) => {
                     e.preventDefault();
                     void create();
                 }}
             >
-                <input
+                <Input
                     aria-label="Neues Projekt"
                     placeholder="Neues Projekt – nur ein Titel genügt"
                     maxLength={160}
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                 />
-                <button disabled={creating} type="submit">
+                <Button disabled={creating} type="submit">
                     Projekt anlegen
-                </button>
+                </Button>
             </form>
             {createError && (
                 <p role="alert">
@@ -139,19 +158,65 @@ export default function Projects({
                     erneut mit Enter versuchen.
                 </p>
             )}
-            <label className="project-status-filter">
+            {Object.entries(drafts)
+                .filter(
+                    ([id, draft]) =>
+                        Object.keys(draft).length > 0 &&
+                        !projects.some((project) => project.id === id),
+                )
+                .map(([id, draft]) => (
+                    <Alert key={id} variant="destructive">
+                        <AlertDescription className="space-y-3">
+                            <p>
+                                Dieses Projekt wurde gelöscht. Ihr lokaler
+                                Entwurf wurde nicht gesendet. Sie können den
+                                Text hier kopieren oder den Entwurf verwerfen.
+                            </p>
+                            <Textarea
+                                aria-label="Erhaltener lokaler Projektentwurf"
+                                readOnly
+                                value={Object.entries(draft)
+                                    .map(
+                                        ([key, value]) =>
+                                            `${({ name: 'Name', description: 'Beschreibung', starts_on: 'Start', ends_on: 'Ende', status: 'Status', color: 'Farbe' } as Record<string, string>)[key] ?? key}: ${value ?? 'Leer'}`,
+                                    )
+                                    .join('\n')}
+                            />
+                            <Button
+                                variant="outline"
+                                onClick={() => {
+                                    const next = { ...draftRef.current };
+                                    delete next[id];
+                                    draftRef.current = next;
+                                    setDrafts(next);
+                                }}
+                            >
+                                Lokalen Projektentwurf verwerfen
+                            </Button>
+                        </AlertDescription>
+                    </Alert>
+                ))}
+            <Label className="project-status-filter flex flex-wrap items-center gap-3">
                 Projektstatus{' '}
-                <select
+                <NativeSelect
                     value={filter}
                     onChange={(e) => setFilter(e.target.value)}
                 >
-                    <option value="all">Alle inkl. Archiv</option>
-                    <option value="active">Aktiv</option>
-                    <option value="completed">Abgeschlossen</option>
-                    <option value="archived">Archiviert</option>
-                </select>
-            </label>
-            <div className="project-grid">
+                    <NativeSelectOption value="all">
+                        Alle inkl. Archiv
+                    </NativeSelectOption>
+                    <NativeSelectOption value="active">
+                        Aktiv
+                    </NativeSelectOption>
+                    <NativeSelectOption value="completed">
+                        Abgeschlossen
+                    </NativeSelectOption>
+                    <NativeSelectOption value="archived">
+                        Archiviert
+                    </NativeSelectOption>
+                </NativeSelect>
+            </Label>
+            <div className="project-grid grid min-w-0 gap-4 lg:grid-cols-2 2xl:grid-cols-3">
                 {projects
                     .filter(
                         (p) =>
@@ -168,101 +233,125 @@ export default function Projects({
                     .map((server) => {
                         const p = { ...server, ...drafts[server.id] };
                         return (
-                            <article
-                                className="project-card"
-                                key={p.id}
-                                style={{ borderTopColor: p.color || '#42684c' }}
-                            >
-                                <DraftInput
-                                    label="Projektname"
-                                    maxLength={160}
-                                    value={p.name}
-                                    onCommit={(name) =>
-                                        update(server, { name })
-                                    }
-                                />
-                                <span className="project-count">
-                                    {p.open_tasks ?? 0} offen ·{' '}
-                                    {p.done_tasks ?? 0} erledigt
-                                </span>
-                                <div className="project-dates">
-                                    <label>
-                                        Geplanter Start
-                                        <input
-                                            aria-label="Projektstart"
-                                            type="date"
-                                            value={p.starts_on ?? ''}
-                                            onChange={(e) =>
-                                                update(server, {
-                                                    starts_on:
-                                                        e.target.value || null,
-                                                })
+                            <Card className="project-card min-w-0" key={p.id}>
+                                <CardHeader>
+                                    <div className="flex justify-end">
+                                        <RecordActions
+                                            type="project"
+                                            record={server}
+                                            disabled={
+                                                Object.keys(drafts[p.id] ?? {})
+                                                    .length > 0
                                             }
+                                            refresh={() => deleted(p.id)}
                                         />
-                                    </label>
-                                    <label>
-                                        Geplantes Ende
-                                        <input
-                                            aria-label="Projektende"
-                                            type="date"
-                                            value={p.ends_on ?? ''}
-                                            onChange={(e) =>
-                                                update(server, {
-                                                    ends_on:
-                                                        e.target.value || null,
-                                                })
-                                            }
-                                        />
-                                    </label>
-                                </div>
-                                <label>
-                                    Status
-                                    <select
-                                        aria-label="Projektstatus"
-                                        value={p.status}
-                                        onChange={(e) =>
-                                            update(server, {
-                                                status: e.target
-                                                    .value as Project['status'],
-                                            })
-                                        }
-                                    >
-                                        <option value="active">Aktiv</option>
-                                        <option value="completed">
-                                            Abgeschlossen
-                                        </option>
-                                        <option value="archived">
-                                            Archiviert
-                                        </option>
-                                    </select>
-                                </label>
-                                <label>
-                                    Farbe
-                                    <input
-                                        aria-label="Projektfarbe"
-                                        type="color"
-                                        value={p.color || '#42684c'}
-                                        onChange={(e) =>
-                                            update(server, {
-                                                color: e.target.value,
-                                            })
+                                    </div>
+                                    <DraftInput
+                                        label="Projektname"
+                                        maxLength={160}
+                                        value={p.name}
+                                        onCommit={(name) =>
+                                            update(server, { name })
                                         }
                                     />
-                                </label>
-                                <DraftInput
-                                    multiline
-                                    label="Projektbeschreibung"
-                                    maxLength={50000}
-                                    value={p.description ?? ''}
-                                    onCommit={(description) =>
-                                        update(server, { description })
-                                    }
-                                />
-                                <div className="project-actions">
-                                    <button onClick={() => openTasks(p.id)}>
+                                    <Badge
+                                        variant="secondary"
+                                        className="project-count w-fit"
+                                    >
+                                        {p.open_tasks ?? 0} offen ·{' '}
+                                        {p.done_tasks ?? 0} erledigt
+                                    </Badge>
+                                </CardHeader>
+                                <CardContent className="space-y-4">
+                                    <div className="project-dates grid gap-4 sm:grid-cols-2">
+                                        <Label className="grid min-w-0 gap-2">
+                                            Geplanter Start
+                                            <Input
+                                                aria-label="Projektstart"
+                                                type="date"
+                                                value={p.starts_on ?? ''}
+                                                onChange={(e) =>
+                                                    update(server, {
+                                                        starts_on:
+                                                            e.target.value ||
+                                                            null,
+                                                    })
+                                                }
+                                            />
+                                        </Label>
+                                        <Label className="grid min-w-0 gap-2">
+                                            Geplantes Ende
+                                            <Input
+                                                aria-label="Projektende"
+                                                type="date"
+                                                value={p.ends_on ?? ''}
+                                                onChange={(e) =>
+                                                    update(server, {
+                                                        ends_on:
+                                                            e.target.value ||
+                                                            null,
+                                                    })
+                                                }
+                                            />
+                                        </Label>
+                                    </div>
+                                    <Label className="grid min-w-0 gap-2">
+                                        Status
+                                        <NativeSelect
+                                            aria-label="Projektstatus"
+                                            value={p.status}
+                                            onChange={(e) =>
+                                                update(server, {
+                                                    status: e.target
+                                                        .value as Project['status'],
+                                                })
+                                            }
+                                        >
+                                            <NativeSelectOption value="active">
+                                                Aktiv
+                                            </NativeSelectOption>
+                                            <NativeSelectOption value="completed">
+                                                Abgeschlossen
+                                            </NativeSelectOption>
+                                            <NativeSelectOption value="archived">
+                                                Archiviert
+                                            </NativeSelectOption>
+                                        </NativeSelect>
+                                    </Label>
+                                    <Label className="grid min-w-0 gap-2">
+                                        Farbe
+                                        <Input
+                                            aria-label="Projektfarbe"
+                                            className="w-14 p-1"
+                                            type="color"
+                                            value={p.color || '#42684c'}
+                                            onChange={(e) =>
+                                                update(server, {
+                                                    color: e.target.value,
+                                                })
+                                            }
+                                        />
+                                    </Label>
+                                    <DraftInput
+                                        multiline
+                                        label="Projektbeschreibung"
+                                        maxLength={50000}
+                                        value={p.description ?? ''}
+                                        onCommit={(description) =>
+                                            update(server, { description })
+                                        }
+                                    />
+                                </CardContent>
+                                <CardFooter className="project-actions flex-wrap gap-2">
+                                    <RecoveryLinks id={p.id} />
+                                    <Button
+                                        className="h-auto whitespace-normal"
+                                        onClick={() => openTasks(p.id)}
+                                    >
                                         Aufgaben öffnen / erfassen →
-                                    </button>
-                                    <button
+                                    </Button>
+                                    <Button
+                                        variant="outline"
                                         onClick={() => {
                                             setSelected(
                                                 selected === p.id ? null : p.id,
@@ -271,15 +360,19 @@ export default function Projects({
                                         }}
                                     >
                                         Chronik
-                                    </button>
-                                </div>
+                                    </Button>
+                                </CardFooter>
                                 {Object.keys(drafts[p.id] ?? {}).length > 0 && (
-                                    <div className="sync-state" role="status">
+                                    <div
+                                        className="sync-state mx-6 space-y-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm"
+                                        role="status"
+                                    >
                                         {errors[p.id] ? (
                                             <>
                                                 Nicht synchronisiert:{' '}
                                                 {errors[p.id].message}{' '}
-                                                <button
+                                                <Button
+                                                    variant="outline"
                                                     onClick={() =>
                                                         update(
                                                             server,
@@ -293,7 +386,7 @@ export default function Projects({
                                                     {errors[p.id].current
                                                         ? ' auf Basis der aktuellen Serverversion'
                                                         : ''}
-                                                </button>
+                                                </Button>
                                                 {errors[p.id].current && (
                                                     <ConflictSummary
                                                         record={
@@ -311,8 +404,8 @@ export default function Projects({
                                     </div>
                                 )}
                                 {selected === p.id && (
-                                    <div className="project-history">
-                                        <p className="muted">
+                                    <div className="project-history mx-6 space-y-4 border-t pt-6">
+                                        <p className="text-sm text-muted-foreground">
                                             Bedienaktionen, keine tatsächliche
                                             Arbeitsdauer.
                                         </p>
@@ -324,30 +417,32 @@ export default function Projects({
                                                 projects={projects}
                                             />
                                         ))}
-                                        <button
+                                        <Button
+                                            variant="outline"
                                             disabled={historyPage <= 1}
                                             onClick={() =>
                                                 setHistoryPage(historyPage - 1)
                                             }
                                         >
                                             Neuer
-                                        </button>
-                                        <button
+                                        </Button>
+                                        <Button
+                                            variant="outline"
                                             disabled={historyPage >= lastPage}
                                             onClick={() =>
                                                 setHistoryPage(historyPage + 1)
                                             }
                                         >
                                             Älter
-                                        </button>
+                                        </Button>
                                     </div>
                                 )}
-                            </article>
+                            </Card>
                         );
                     })}
             </div>
             {!projects.length && (
-                <p className="empty-small">
+                <p className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
                     Ein Projekt beginnt mit einer Idee. Lege oben das erste an.
                 </p>
             )}

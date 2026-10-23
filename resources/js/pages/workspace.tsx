@@ -1,3 +1,31 @@
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import {
+    NativeSelect,
+    NativeSelectOption,
+} from '@/components/ui/native-select';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+    SidebarProvider,
+    SidebarInset,
+    SidebarTrigger,
+} from '@/components/ui/sidebar';
+import { Separator } from '@/components/ui/separator';
+import {
+    Sheet,
+    SheetContent,
+    SheetHeader,
+    SheetTitle,
+    SheetDescription,
+} from '@/components/ui/sheet';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import WorkspaceNavigation from '@/workspace/navigation';
+import TaskSection from '@/workspace/task-section';
+import RecordActions from '@/workspace/record-actions';
+import Trash from '@/workspace/trash';
 import { Head, router, usePage } from '@inertiajs/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -8,11 +36,9 @@ import {
     ClipboardList,
     Folder,
     History,
-    LogOut,
     Plus,
     Search,
-    Settings,
-    Snowflake,
+    Trash2,
 } from 'lucide-react';
 import DraftInput from '@/workspace/draft-input';
 import { ActivityLog, ConflictSummary } from '@/workspace/activity-log';
@@ -28,14 +54,14 @@ import type {
     Project,
     Task,
 } from '@/workspace/types';
-import '../../css/workspace.css';
 
 type View =
     | 'Schreibtisch'
     | 'Kalender'
     | 'Projekte'
     | 'Jahresplan'
-    | 'Wochencheck';
+    | 'Wochencheck'
+    | 'Papierkorb';
 type Draft = {
     data: Partial<Task>;
     error?: Failure;
@@ -49,6 +75,7 @@ const views: { name: View; icon: typeof ClipboardList }[] = [
     { name: 'Projekte', icon: Folder },
     { name: 'Jahresplan', icon: ArrowDownToLine },
     { name: 'Wochencheck', icon: CheckCheck },
+    { name: 'Papierkorb', icon: Trash2 },
 ];
 
 export default function Workspace({
@@ -63,11 +90,12 @@ export default function Workspace({
         () =>
             (typeof window !== 'undefined'
                 ? views.find(
-                      (v) => v.name === localStorage.getItem('workspace-view'),
-                  )?.name
+                    (v) => v.name === localStorage.getItem('workspace-view'),
+                )?.name
                 : undefined) || 'Schreibtisch',
     );
     const [tasks, setTasks] = useState<Task[]>([]);
+    const removedIds = useRef(new Set<string>());
     const tasksRef = useRef<Task[]>([]);
     const [projects, setProjects] = useState<Project[]>([]);
     const [drafts, setDrafts] = useState<Record<string, Draft>>({});
@@ -135,6 +163,8 @@ export default function Workspace({
             }>(`tasks?${params}`);
             if (sequence !== loadSequence.current) return;
             tasksRef.current = result.tasks.data;
+            for (const task of result.tasks.data)
+                removedIds.current.delete(task.id);
             setTasks(result.tasks.data);
             setPagination(result.tasks);
             setSummary(result.summary);
@@ -165,14 +195,34 @@ export default function Workspace({
             if (document.visibilityState !== 'visible' || busy) return;
             busy = true;
             try {
-                const result = await api<{ cursor: number; changed: boolean }>(
-                    `changes?since=${cursor.current}`,
-                );
-                if (force || result.changed) {
+                let more = true;
+                let changed = force;
+                while (more) {
+                    const result = await api<{
+                        cursor: number;
+                        changed: boolean;
+                        more: boolean;
+                        removed: { type: string; id: string }[];
+                    }>(`changes?since=${cursor.current}`);
+                    for (const removed of result.removed ?? []) {
+                        if (removed.type === 'task')
+                            removedIds.current.add(removed.id);
+                        if (
+                            removed.type === 'project' &&
+                            project === removed.id
+                        )
+                            setProject('');
+                    }
+                    if (result.removed?.some((item) => item.id === selected))
+                        setSelected(null);
+                    changed ||= result.changed;
+                    more = result.more;
+                    cursor.current = result.cursor;
+                }
+                if (changed) {
                     await Promise.all([load(), loadProjects()]);
                     setRevision((r) => r + 1);
                 }
-                cursor.current = result.cursor;
             } catch {
                 setNotice(
                     'Offline / nicht synchronisiert. Lokale Entwürfe bleiben erhalten.',
@@ -192,7 +242,7 @@ export default function Workspace({
             window.removeEventListener('online', refresh);
             document.removeEventListener('visibilitychange', refresh);
         };
-    }, [load, loadProjects]);
+    }, [load, loadProjects, project, selected]);
     useEffect(() => {
         const handler = (event: KeyboardEvent) => {
             const editing = (event.target as HTMLElement)?.closest(
@@ -267,6 +317,8 @@ export default function Workspace({
                 void loadProjects();
             } catch (error) {
                 const failure = error as Failure;
+                if (failure.deleted || failure.current?.deleted_at)
+                    removedIds.current.add(task.id);
                 updateDrafts({
                     ...draftRef.current,
                     [task.id]: {
@@ -330,10 +382,14 @@ export default function Workspace({
                     }) as Task,
             ),
         ...tasks.map((t) => ({ ...t, ...drafts[t.id]?.data })),
-    ];
+    ].filter((t) => !removedIds.current.has(t.id));
     // A failing draft stays visible even after a filter or team refresh.
     for (const [id, draft] of Object.entries(drafts))
-        if (!draft.create && !displayed.some((t) => t.id === id)) {
+        if (
+            !draft.create &&
+            !removedIds.current.has(id) &&
+            !displayed.some((t) => t.id === id)
+        ) {
             const base = draft.base;
             if (base) displayed.unshift({ ...base, ...draft.data });
         }
@@ -351,35 +407,48 @@ export default function Workspace({
         setUndo({ id: t.id, status: t.status });
         setTimeout(() => setUndo(null), 7000);
     };
+    const refreshWorkspace = async () => {
+        await Promise.all([load(), loadProjects()]);
+        setSelected(null);
+        setRevision((r) => r + 1);
+    };
+    const afterTaskDelete = async (id: string) => {
+        removedIds.current.add(id);
+        await refreshWorkspace();
+    };
     const row = (t: Task) => (
         <div
-            className={`task-row ${t.status === 'done' ? 'is-done' : ''}`}
+            className={`task-row flex flex-wrap items-center gap-3 border-t p-4 ${t.status === 'done' ? 'is-done' : ''}`}
             key={t.id}
         >
-            <input
+            <Checkbox
                 aria-label={`${t.title}: ${t.status === 'done' ? 'wieder öffnen' : 'erledigen'}`}
-                type="checkbox"
                 checked={t.status === 'done'}
                 disabled={t.id.startsWith('local-')}
-                onChange={() => toggle(t)}
+                onCheckedChange={() => toggle(t)}
             />
-            <div className="task-title">
+            <div className="task-title min-w-0 flex-1 basis-[calc(100%-3rem)] sm:basis-[14rem]">
                 <DraftInput
                     value={t.title}
                     label="Aufgabentitel"
+                    className={
+                        t.status === 'done'
+                            ? 'text-muted-foreground line-through'
+                            : undefined
+                    }
                     disabled={t.id.startsWith('local-')}
                     onCommit={(title) => mutate(t, { title })}
                 />
-                <span className="task-sub">
+                <span className="task-sub mt-1 block truncate text-xs text-muted-foreground">
                     {t.archived_at && 'Archiviert · '}
                     {projects.find((p) => p.id === t.project_id)?.name}
                 </span>
             </div>
-            <input
+            <Input
                 className={
                     t.due_on && t.due_on < todayBerlin() && t.status === 'open'
-                        ? 'overdue'
-                        : ''
+                        ? 'w-[9rem] text-destructive'
+                        : 'w-[9rem]'
                 }
                 aria-label="Frist"
                 type="date"
@@ -387,8 +456,9 @@ export default function Workspace({
                 onChange={(e) => mutate(t, { due_on: e.target.value || null })}
                 disabled={t.id.startsWith('local-')}
             />
-            <select
+            <NativeSelect
                 aria-label="Zuständig"
+                className="w-32 truncate"
                 disabled={t.id.startsWith('local-')}
                 value={t.assigned_to ?? ''}
                 onChange={(e) =>
@@ -399,48 +469,55 @@ export default function Workspace({
                     })
                 }
             >
-                <option value="">Niemand</option>
+                <NativeSelectOption value="">Niemand</NativeSelectOption>
                 {t.assigned_to &&
                     !members.some((p) => p.id === t.assigned_to) && (
-                        <option value={t.assigned_to} disabled>
+                        <NativeSelectOption value={t.assigned_to} disabled>
                             {name(t.assigned_to)} (inaktiv)
-                        </option>
+                        </NativeSelectOption>
                     )}
                 {members.map((p) => (
-                    <option key={p.id} value={p.id}>
+                    <NativeSelectOption key={p.id} value={p.id}>
                         {p.name}
-                    </option>
+                    </NativeSelectOption>
                 ))}
-            </select>
-            <select
+            </NativeSelect>
+            <NativeSelect
                 aria-label="Projekt zuordnen"
+                className="w-36 truncate"
                 disabled={t.id.startsWith('local-')}
                 value={t.project_id ?? ''}
                 onChange={(e) =>
                     mutate(t, { project_id: e.target.value || null })
                 }
             >
-                <option value="">Ohne Projekt</option>
+                <NativeSelectOption value="">Ohne Projekt</NativeSelectOption>
                 {projects.map((p) => (
-                    <option key={p.id} value={p.id}>
+                    <NativeSelectOption key={p.id} value={p.id}>
                         {p.name}
-                    </option>
+                    </NativeSelectOption>
                 ))}
-            </select>
-            <button
+            </NativeSelect>
+            <Button
+                variant="outline"
+                size="icon"
                 aria-label={`Details: ${t.title}`}
                 disabled={t.id.startsWith('local-')}
                 onClick={() => openDetail(t.id)}
             >
                 <History size={17} />
-            </button>
+            </Button>
             {drafts[t.id] && (
-                <div className="sync-state" role="status">
+                <div
+                    className="sync-state basis-full space-y-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-foreground"
+                    role="status"
+                >
                     {drafts[t.id].error ? (
                         <>
                             <strong>Nicht synchronisiert.</strong>{' '}
                             {drafts[t.id].error?.message}{' '}
-                            <button
+                            <Button
+                                variant="outline"
                                 onClick={() =>
                                     drafts[t.id].create
                                         ? void create(t.id, drafts[t.id].data)
@@ -448,7 +525,7 @@ export default function Workspace({
                                 }
                             >
                                 Erneut versuchen
-                            </button>
+                            </Button>
                             {drafts[t.id].error?.current && (
                                 <>
                                     <ConflictSummary
@@ -458,7 +535,8 @@ export default function Workspace({
                                         people={people}
                                         projects={projects}
                                     />
-                                    <button
+                                    <Button
+                                        variant="outline"
                                         onClick={() => {
                                             accept(
                                                 drafts[t.id].error
@@ -478,8 +556,9 @@ export default function Workspace({
                                     >
                                         Entwurf auf aktueller Serverversion
                                         erneut senden
-                                    </button>
-                                    <button
+                                    </Button>
+                                    <Button
+                                        variant="outline"
                                         onClick={() => {
                                             accept(
                                                 drafts[t.id].error
@@ -493,7 +572,7 @@ export default function Workspace({
                                         }}
                                     >
                                         Entwurf verwerfen, Serverstand verwenden
-                                    </button>
+                                    </Button>
                                 </>
                             )}
                         </>
@@ -502,478 +581,635 @@ export default function Workspace({
                     )}
                 </div>
             )}
+            <RecordActions
+                type="task"
+                record={t}
+                disabled={t.id.startsWith('local-') || !!drafts[t.id]}
+                refresh={() => afterTaskDelete(t.id)}
+            />
         </div>
     );
     const group = (label: string, items: Task[], collapsed = false) => (
-        <details className="task-group" key={label} open={!collapsed}>
-            <summary>
-                {label}
-                <span>{items.length}</span>
-            </summary>
+        <TaskSection
+            key={label}
+            label={label}
+            count={items.length}
+            collapsed={collapsed}
+        >
             {items.map(row)}
             {!items.length && (
-                <p className="empty-small">Hier ist alles aufgeräumt.</p>
+                <p className="px-4 pb-4 text-sm text-muted-foreground">
+                    Hier ist alles aufgeräumt.
+                </p>
             )}
-        </details>
+        </TaskSection>
     );
 
     return (
-        <div className="workspace-shell">
+        <SidebarProvider className="workspace-shell">
             <Head title={view} />
-            <aside className="workspace-nav">
-                <a href="/workspace" className="brand">
-                    <Snowflake />{' '}
-                    <span>
-                        KÜHL<small>WORKSPACE</small>
+            <WorkspaceNavigation
+                view={view}
+                user={auth.user}
+                logout={() => router.post('/logout')}
+                onView={(next) => {
+                    setView(next);
+                    localStorage.setItem('workspace-view', next);
+                    setPage(1);
+                }}
+            />
+            <SidebarInset className="min-w-0">
+                <div className="flex h-16 shrink-0 items-center gap-2 border-b border-sidebar-border/50 px-4 md:px-6">
+                    <SidebarTrigger aria-label="Navigation umschalten" />
+                    <Separator orientation="vertical" className="mr-2 h-4" />
+                    <span className="text-sm text-muted-foreground">
+                        {view}
                     </span>
-                </a>
-                <p className="nav-caption">DEIN DIGITALER SCHREIBTISCH</p>
-                <nav>
-                    {views.map((v) => (
-                        <button
-                            key={v.name}
-                            className={view === v.name ? 'active' : ''}
-                            onClick={() => {
-                                setView(v.name);
-                                localStorage.setItem('workspace-view', v.name);
-                                setPage(1);
-                            }}
-                        >
-                            <v.icon size={19} />
-                            {v.name}
-                        </button>
-                    ))}
-                </nav>
-                <div className="nav-bottom">
-                    <span className="avatar">{auth.user.name.slice(0, 1)}</span>
-                    <span>
-                        {auth.user.name}
-                        <small>Gemeinsamer Workspace</small>
-                    </span>
-                    <a
-                        aria-label="Profil und Passwort"
-                        href="/settings/profile"
-                    >
-                        <Settings size={17} />
-                    </a>
-                    <button
-                        aria-label="Abmelden"
-                        onClick={() => router.post('/logout')}
-                    >
-                        <LogOut size={17} />
-                    </button>
                 </div>
-            </aside>
-            <main className="workspace-main">
-                <header>
-                    <div>
-                        <p className="eyebrow">
-                            STADTBÄCKEREI KÜHL · GEMEINSAM GUT ORGANISIERT
-                        </p>
-                        <h1>{view}</h1>
-                        <p className="subtitle">
-                            {view === 'Schreibtisch'
-                                ? 'Gedanken festhalten. Gemeinsam Dinge erledigen.'
-                                : 'Alles im Blick, Schritt für Schritt.'}
-                        </p>
-                    </div>
-                    <span className="today">
-                        {new Intl.DateTimeFormat('de-DE', {
-                            dateStyle: 'full',
-                            timeZone: 'Europe/Berlin',
-                        }).format(new Date())}
-                    </span>
-                </header>
-                <form
-                    className="quick-capture"
-                    onSubmit={(e) => {
-                        e.preventDefault();
-                        quickCreate();
-                    }}
-                >
-                    <Plus size={23} />
-                    <input
-                        ref={input}
-                        aria-label="Neue Aufgabe"
-                        placeholder="Was gibt es zu tun? Einfach schreiben …"
-                        maxLength={500}
-                        value={title}
-                        onChange={(e) => setTitle(e.target.value)}
-                    />
-                    <kbd>Enter ↵</kbd>
-                    <button type="submit" aria-label="Aufgabe hinzufügen">
-                        Hinzufügen
-                    </button>
-                </form>
-                <div className="filter-bar">
-                    <label className="search">
-                        <Search size={17} />
-                        <input
-                            aria-label="Alle Aufgaben durchsuchen"
-                            placeholder="Suchen, auch in erledigten Aufgaben …"
-                            value={query}
-                            onChange={(e) => {
-                                if (!query && e.target.value) setArchive('all');
-                                setQuery(e.target.value);
-                                setPage(1);
-                            }}
+                <main className="workspace-main flex min-w-0 flex-1 flex-col gap-6 p-4 md:p-6">
+                    <header className="flex flex-wrap items-start justify-between gap-4">
+                        <div>
+                            <h1 className="mt-1 text-xl font-semibold">
+                                {view}
+                            </h1>
+                            <p className="mt-1 text-sm text-muted-foreground">
+                                {view === 'Schreibtisch'
+                                    ? 'Gedanken festhalten. Gemeinsam Dinge erledigen.'
+                                    : 'Alles im Blick, Schritt für Schritt.'}
+                            </p>
+                        </div>
+                        <span className="text-sm text-muted-foreground">
+                            {new Intl.DateTimeFormat('de-DE', {
+                                dateStyle: 'full',
+                                timeZone: 'Europe/Berlin',
+                            }).format(new Date())}
+                        </span>
+                    </header>
+                    <form
+                        className="quick-capture sticky top-0 z-20 flex items-center gap-3 rounded-xl border bg-card p-4 text-card-foreground shadow-xs"
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            quickCreate();
+                        }}
+                    >
+                        <Plus size={23} />
+                        <Input
+                            ref={input}
+                            className="min-w-0 flex-1"
+                            aria-label="Neue Aufgabe"
+                            placeholder="Was gibt es zu tun? Einfach schreiben …"
+                            maxLength={500}
+                            value={title}
+                            onChange={(e) => setTitle(e.target.value)}
                         />
-                    </label>
-                    <select
-                        aria-label="Statusfilter"
-                        value={status}
-                        onChange={(e) => {
-                            setStatus(e.target.value);
-                            setPage(1);
-                        }}
-                    >
-                        <option value="all">Alle Status</option>
-                        <option value="open">Offen</option>
-                        <option value="done">Erledigt</option>
-                        <option value="overdue">Überfällig</option>
-                    </select>
-                    <select
-                        aria-label="Projektfilter"
-                        value={project}
-                        onChange={(e) => {
-                            setProject(e.target.value);
-                            setPage(1);
-                        }}
-                    >
-                        <option value="">Alle Projekte</option>
-                        {projects.map((p) => (
-                            <option value={p.id} key={p.id}>
-                                {p.name}
-                            </option>
-                        ))}
-                    </select>
-                    <select
-                        aria-label="Personenfilter"
-                        value={person}
-                        onChange={(e) => {
-                            setPerson(e.target.value);
-                            setPage(1);
-                        }}
-                    >
-                        <option value="">Alle Personen</option>
-                        {members.map((p) => (
-                            <option key={p.id} value={p.id}>
-                                {p.name}
-                            </option>
-                        ))}
-                    </select>
-                    <select
-                        aria-label="Archivfilter"
-                        value={archive}
-                        onChange={(e) => {
-                            setArchive(e.target.value);
-                            setPage(1);
-                        }}
-                    >
-                        <option value="current">Aktueller Schreibtisch</option>
-                        <option value="all">Alle inkl. Archiv</option>
-                        <option value="archived">Archiv</option>
-                    </select>
-                </div>
-                {captureDate && (
-                    <p className="capture-date">
-                        Neue Aufgabe am {captureDate}{' '}
-                        <button onClick={() => setCaptureDate(null)}>
-                            Datum entfernen ×
-                        </button>
-                    </p>
-                )}
-                {notice && (
-                    <p className="notice" role="alert">
-                        {notice}{' '}
-                        <button onClick={() => void load()}>
-                            Erneut laden
-                        </button>
-                    </p>
-                )}
-                {view === 'Jahresplan' && <YearPlan revision={revision} />}
-                {query && view === 'Schreibtisch' && (
-                    <section
-                        className="project-search-results"
-                        aria-label="Gefundene Projekte"
-                    >
-                        {projects
-                            .filter((p) =>
-                                `${p.name} ${p.description ?? ''}`
-                                    .toLocaleLowerCase('de-DE')
-                                    .includes(query.toLocaleLowerCase('de-DE')),
-                            )
-                            .map((p) => (
-                                <button
-                                    key={p.id}
-                                    onClick={() => {
-                                        setProject(p.id);
-                                        setView('Projekte');
-                                    }}
-                                >
-                                    {p.status === 'archived'
-                                        ? 'Archiviertes Projekt: '
-                                        : 'Projekt: '}
-                                    {p.name}
-                                </button>
-                            ))}
-                    </section>
-                )}
-                {view === 'Wochencheck' && summary && (
-                    <p className="weekly-summary">
-                        {summary.overdue} überfällig · {summary.unorganized}{' '}
-                        ungeordnet · {summary.done} diese Woche erledigt
-                    </p>
-                )}
-                {view !== 'Schreibtisch' &&
-                    view !== 'Wochencheck' &&
-                    Object.keys(drafts).length > 0 && (
-                        <section aria-label="Noch nicht synchronisierte Aufgaben">
-                            {displayed.filter((t) => drafts[t.id]).map(row)}
-                        </section>
-                    )}
-                <div hidden={view !== 'Projekte'}>
-                    <Projects
-                        projects={projects}
-                        projectId={project}
-                        query={query}
-                        people={people}
-                        refresh={loadProjects}
-                        openTasks={(id) => {
-                            setProject(id);
-                            setView('Schreibtisch');
-                            setPage(1);
-                            input.current?.focus();
-                        }}
-                    />
-                </div>
-                {view === 'Kalender' && (
-                    <Calendar
-                        projects={projects}
-                        person={person}
-                        project={project}
-                        revision={revision}
-                        create={(date) => {
-                            setCaptureDate(date);
-                            input.current?.focus();
-                        }}
-                        openTask={(t) => {
-                            accept(t);
-                            openDetail(t.id);
-                        }}
-                        openProject={(id) => {
-                            setProject(id);
-                            setView('Projekte');
-                        }}
-                        mutate={mutate}
-                    />
-                )}
-                {view === 'Wochencheck' && (
-                    <div className="check-tabs">
-                        {[
-                            ['overdue', 'Überfällig'],
-                            ['undated', 'Ohne Termin seit > 7 Tagen'],
-                            ['unassigned', 'Ohne Projekt seit > 7 Tagen'],
-                            ['recent', 'Diese Woche erledigt'],
-                        ].map(([value, label]) => (
-                            <button
-                                className={check === value ? 'active' : ''}
-                                key={value}
-                                onClick={() => {
-                                    setCheck(value);
+                        <kbd className="hidden rounded border bg-muted px-1.5 py-0.5 text-xs text-muted-foreground sm:inline-block">
+                            Enter ↵
+                        </kbd>
+                        <Button type="submit" aria-label="Aufgabe hinzufügen">
+                            Hinzufügen
+                        </Button>
+                    </form>
+                    <div className="filter-bar flex min-w-0 flex-wrap items-center gap-3">
+                        <Label className="relative min-w-0 basis-full sm:flex-1 sm:basis-64 [&>svg]:pointer-events-none [&>svg]:absolute [&>svg]:top-2.5 [&>svg]:left-3 [&>svg]:text-muted-foreground">
+                            <Search size={17} />
+                            <Input
+                                aria-label="Alle Aufgaben durchsuchen"
+                                className="pl-9"
+                                placeholder="Suchen, auch in erledigten Aufgaben …"
+                                value={query}
+                                onChange={(e) => {
+                                    if (!query && e.target.value)
+                                        setArchive('all');
+                                    setQuery(e.target.value);
                                     setPage(1);
                                 }}
-                            >
-                                {label}
-                            </button>
-                        ))}
-                    </div>
-                )}
-                {(view === 'Schreibtisch' || view === 'Wochencheck') && (
-                    <>
-                        {group(
-                            'Überfällig',
-                            displayed.filter(
-                                (t) =>
-                                    t.status === 'open' &&
-                                    t.due_on &&
-                                    t.due_on < todayBerlin(),
-                            ),
-                        )}
-                        {group(
-                            'Heute',
-                            displayed.filter(
-                                (t) =>
-                                    t.status === 'open' &&
-                                    t.due_on === todayBerlin(),
-                            ),
-                        )}
-                        {group(
-                            'Demnächst',
-                            displayed.filter(
-                                (t) =>
-                                    t.status === 'open' &&
-                                    t.due_on &&
-                                    t.due_on > todayBerlin(),
-                            ),
-                        )}
-                        {group(
-                            'Eingang / ohne Termin',
-                            displayed.filter(
-                                (t) => t.status === 'open' && !t.due_on,
-                            ),
-                        )}
-                        {group(
-                            'Erledigt',
-                            displayed.filter((t) => t.status === 'done'),
-                            !query && status !== 'done' && check !== 'recent',
-                        )}
-                        <div className="pagination">
-                            <span>
-                                {pagination.total} Treffer · Seite {page} /{' '}
-                                {pagination.last_page} (Abschnittszahlen auf
-                                dieser Seite)
-                            </span>
-                            <button
-                                disabled={page <= 1}
-                                onClick={() => setPage(page - 1)}
-                            >
-                                Zurück
-                            </button>
-                            <button
-                                disabled={page >= pagination.last_page}
-                                onClick={() => setPage(page + 1)}
-                            >
-                                Weiter
-                            </button>
-                        </div>
-                    </>
-                )}
-                {undo && (
-                    <div className="undo" role="status">
-                        Status geändert.{' '}
-                        <button
-                            onClick={() => {
-                                const current = tasksRef.current.find(
-                                    (t) => t.id === undo.id,
-                                );
-                                if (current)
-                                    mutate(current, { status: undo.status });
-                                setUndo(null);
+                            />
+                        </Label>
+                        <NativeSelect
+                            aria-label="Statusfilter"
+                            className="max-w-[min(11rem,42vw)] truncate"
+                            value={status}
+                            onChange={(e) => {
+                                setStatus(e.target.value);
+                                setPage(1);
                             }}
                         >
-                            Rückgängig
-                        </button>
-                    </div>
-                )}
-            </main>
-            {task && (
-                <aside className="detail-panel" aria-label="Aufgabendetails">
-                    <button className="close" onClick={() => setSelected(null)}>
-                        Schließen ×
-                    </button>
-                    <p className="eyebrow">AUFGABENDETAILS</p>
-                    <label>
-                        Frist
-                        <input
-                            type="date"
-                            value={task.due_on ?? ''}
-                            onChange={(e) =>
-                                mutate(task, { due_on: e.target.value || null })
-                            }
-                        />
-                    </label>
-                    <DraftInput
-                        value={task.title}
-                        label="Titel im Detail"
-                        onCommit={(title) => mutate(task, { title })}
-                    />
-                    <label>
-                        Projekt
-                        <select
-                            value={task.project_id ?? ''}
-                            onChange={(e) =>
-                                mutate(task, {
-                                    project_id: e.target.value || null,
-                                })
-                            }
+                            <NativeSelectOption value="all">
+                                Alle Status
+                            </NativeSelectOption>
+                            <NativeSelectOption value="open">
+                                Offen
+                            </NativeSelectOption>
+                            <NativeSelectOption value="done">
+                                Erledigt
+                            </NativeSelectOption>
+                            <NativeSelectOption value="overdue">
+                                Überfällig
+                            </NativeSelectOption>
+                        </NativeSelect>
+                        <NativeSelect
+                            aria-label="Projektfilter"
+                            className="max-w-[min(11rem,42vw)] truncate"
+                            value={project}
+                            onChange={(e) => {
+                                setProject(e.target.value);
+                                setPage(1);
+                            }}
                         >
-                            <option value="">Ohne Projekt</option>
+                            <NativeSelectOption value="">
+                                Alle Projekte
+                            </NativeSelectOption>
                             {projects.map((p) => (
-                                <option key={p.id} value={p.id}>
+                                <NativeSelectOption value={p.id} key={p.id}>
                                     {p.name}
-                                </option>
+                                </NativeSelectOption>
                             ))}
-                        </select>
-                    </label>
-                    <label>
-                        Zurückstellen bis
-                        <input
-                            type="date"
-                            value={task.snoozed_until ?? ''}
-                            onChange={(e) =>
-                                mutate(task, {
-                                    snoozed_until: e.target.value || null,
-                                })
-                            }
-                        />
-                    </label>
-                    <label>
-                        Notizen
-                        <DraftInput
-                            multiline
-                            maxLength={50000}
-                            value={task.notes ?? ''}
-                            label="Notizen"
-                            onCommit={(notes) => mutate(task, { notes })}
-                        />
-                    </label>
-                    <p>
-                        Angelegt von <strong>{name(task.created_by)}</strong>
-                    </p>
-                    <p>
-                        Zugewiesen an <strong>{name(task.assigned_to)}</strong>
-                    </p>
-                    <p>
-                        Erledigt markiert von{' '}
-                        <strong>{name(task.completed_by)}</strong>
-                    </p>
-                    <button
-                        onClick={() =>
-                            mutate(task, {
-                                archived: !task.archived_at,
-                            } as Partial<Task>)
-                        }
-                    >
-                        <Archive size={16} />{' '}
-                        {task.archived_at ? 'Wiederherstellen' : 'Archivieren'}
-                    </button>
-                    <h2>Verlauf</h2>
-                    <p className="muted">
-                        Bedienaktionen, keine Arbeitszeitnachweise.
-                    </p>
-                    {activities.map((a) => (
-                        <ActivityLog
-                            key={a.id}
-                            activity={a}
+                        </NativeSelect>
+                        <NativeSelect
+                            aria-label="Personenfilter"
+                            className="max-w-[min(11rem,42vw)] truncate"
+                            value={person}
+                            onChange={(e) => {
+                                setPerson(e.target.value);
+                                setPage(1);
+                            }}
+                        >
+                            <NativeSelectOption value="">
+                                Alle Personen
+                            </NativeSelectOption>
+                            {members.map((p) => (
+                                <NativeSelectOption key={p.id} value={p.id}>
+                                    {p.name}
+                                </NativeSelectOption>
+                            ))}
+                        </NativeSelect>
+                        <NativeSelect
+                            aria-label="Archivfilter"
+                            className="max-w-[min(11rem,42vw)] truncate"
+                            value={archive}
+                            onChange={(e) => {
+                                setArchive(e.target.value);
+                                setPage(1);
+                            }}
+                        >
+                            <NativeSelectOption value="current">
+                                Aktueller Schreibtisch
+                            </NativeSelectOption>
+                            <NativeSelectOption value="all">
+                                Alle inkl. Archiv
+                            </NativeSelectOption>
+                            <NativeSelectOption value="archived">
+                                Archiv
+                            </NativeSelectOption>
+                        </NativeSelect>
+                    </div>
+                    {captureDate && (
+                        <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                            Neue Aufgabe am {captureDate}{' '}
+                            <Button
+                                variant="outline"
+                                onClick={() => setCaptureDate(null)}
+                            >
+                                Datum entfernen ×
+                            </Button>
+                        </p>
+                    )}
+                    {notice && (
+                        <Alert variant="destructive">
+                            <AlertDescription className="flex flex-wrap items-center gap-2">
+                                {notice}{' '}
+                                <Button
+                                    variant="outline"
+                                    onClick={() => void load()}
+                                >
+                                    Erneut laden
+                                </Button>
+                            </AlertDescription>
+                        </Alert>
+                    )}
+                    {Object.entries(drafts)
+                        .filter(([id]) => removedIds.current.has(id))
+                        .map(([id, draft]) => (
+                            <Alert
+                                key={id}
+                                variant="destructive"
+                                aria-label="Lokaler Entwurf eines gelöschten Eintrags"
+                            >
+                                <AlertDescription className="space-y-3">
+                                    <p>
+                                        Diese Aufgabe wurde gelöscht. Ihr
+                                        lokaler Entwurf wurde nicht gesendet.
+                                        Sie können den Text hier kopieren oder
+                                        den Entwurf verwerfen.
+                                    </p>
+                                    <Textarea
+                                        aria-label="Erhaltener lokaler Entwurf"
+                                        readOnly
+                                        value={[
+                                            draft.data.title ??
+                                            draft.base?.title,
+                                            draft.data.notes ??
+                                            draft.base?.notes,
+                                            ...Object.entries(draft.data)
+                                                .filter(
+                                                    ([key]) =>
+                                                        ![
+                                                            'title',
+                                                            'notes',
+                                                        ].includes(key),
+                                                )
+                                                .map(
+                                                    ([key, value]) =>
+                                                        `${({ due_on: 'Frist', project_id: 'Projekt', assigned_to: 'Zuständig', status: 'Status', snoozed_until: 'Zurückgestellt bis', archived: 'Archiviert' } as Record<string, string>)[key] ?? key}: ${value ?? 'Leer'}`,
+                                                ),
+                                        ]
+                                            .filter(Boolean)
+                                            .join('\n\n')}
+                                    />
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => {
+                                            const next = {
+                                                ...draftRef.current,
+                                            };
+                                            delete next[id];
+                                            updateDrafts(next);
+                                        }}
+                                    >
+                                        Lokalen Entwurf verwerfen
+                                    </Button>
+                                </AlertDescription>
+                            </Alert>
+                        ))}
+                    {view === 'Jahresplan' && <YearPlan revision={revision} />}
+                    {view === 'Papierkorb' && (
+                        <Trash
+                            revision={revision}
                             people={people}
                             projects={projects}
+                            refresh={refreshWorkspace}
                         />
-                    ))}
-                    <button
-                        disabled={historyPage <= 1}
-                        onClick={() => setHistoryPage(historyPage - 1)}
+                    )}
+                    {query && view === 'Schreibtisch' && (
+                        <section
+                            className="flex flex-wrap gap-2"
+                            aria-label="Gefundene Projekte"
+                        >
+                            {projects
+                                .filter((p) =>
+                                    `${p.name} ${p.description ?? ''}`
+                                        .toLocaleLowerCase('de-DE')
+                                        .includes(
+                                            query.toLocaleLowerCase('de-DE'),
+                                        ),
+                                )
+                                .map((p) => (
+                                    <Button
+                                        variant="outline"
+                                        key={p.id}
+                                        onClick={() => {
+                                            setProject(p.id);
+                                            setView('Projekte');
+                                        }}
+                                    >
+                                        {p.status === 'archived'
+                                            ? 'Archiviertes Projekt: '
+                                            : 'Projekt: '}
+                                        {p.name}
+                                    </Button>
+                                ))}
+                        </section>
+                    )}
+                    {view === 'Wochencheck' && summary && (
+                        <p className="rounded-lg border bg-muted/50 p-4 text-sm text-muted-foreground">
+                            {summary.overdue} überfällig · {summary.unorganized}{' '}
+                            ungeordnet · {summary.done} diese Woche erledigt
+                        </p>
+                    )}
+                    {view !== 'Schreibtisch' &&
+                        view !== 'Wochencheck' &&
+                        Object.keys(drafts).length > 0 && (
+                            <section aria-label="Noch nicht synchronisierte Aufgaben">
+                                {displayed.filter((t) => drafts[t.id]).map(row)}
+                            </section>
+                        )}
+                    <div hidden={view !== 'Projekte'}>
+                        <Projects
+                            projects={projects}
+                            projectId={project}
+                            query={query}
+                            people={people}
+                            refresh={loadProjects}
+                            deleted={async (id) => {
+                                if (project === id) setProject('');
+                                await refreshWorkspace();
+                            }}
+                            openTasks={(id) => {
+                                setProject(id);
+                                setView('Schreibtisch');
+                                setPage(1);
+                                input.current?.focus();
+                            }}
+                        />
+                    </div>
+                    {view === 'Kalender' && (
+                        <Calendar
+                            projects={projects}
+                            person={person}
+                            project={project}
+                            revision={revision}
+                            create={(date) => {
+                                setCaptureDate(date);
+                                input.current?.focus();
+                            }}
+                            openTask={(t) => {
+                                accept(t);
+                                openDetail(t.id);
+                            }}
+                            openProject={(id) => {
+                                setProject(id);
+                                setView('Projekte');
+                            }}
+                            mutate={mutate}
+                        />
+                    )}
+                    {view === 'Wochencheck' && (
+                        <Tabs
+                            value={check}
+                            onValueChange={(value) => {
+                                setCheck(value);
+                                setPage(1);
+                            }}
+                        >
+                            <TabsList className="h-auto w-full flex-wrap justify-start">
+                                {[
+                                    ['overdue', 'Überfällig'],
+                                    ['undated', 'Ohne Termin seit > 7 Tagen'],
+                                    [
+                                        'unassigned',
+                                        'Ohne Projekt seit > 7 Tagen',
+                                    ],
+                                    ['recent', 'Diese Woche erledigt'],
+                                ].map(([value, label]) => (
+                                    <TabsTrigger
+                                        className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground dark:data-[state=active]:bg-accent dark:data-[state=active]:text-accent-foreground"
+                                        key={value}
+                                        value={value}
+                                    >
+                                        {label}
+                                    </TabsTrigger>
+                                ))}
+                            </TabsList>
+                        </Tabs>
+                    )}
+                    {(view === 'Schreibtisch' || view === 'Wochencheck') && (
+                        <>
+                            {group(
+                                'Überfällig',
+                                displayed.filter(
+                                    (t) =>
+                                        t.status === 'open' &&
+                                        t.due_on &&
+                                        t.due_on < todayBerlin(),
+                                ),
+                            )}
+                            {group(
+                                'Heute',
+                                displayed.filter(
+                                    (t) =>
+                                        t.status === 'open' &&
+                                        t.due_on === todayBerlin(),
+                                ),
+                            )}
+                            {group(
+                                'Demnächst',
+                                displayed.filter(
+                                    (t) =>
+                                        t.status === 'open' &&
+                                        t.due_on &&
+                                        t.due_on > todayBerlin(),
+                                ),
+                            )}
+                            {group(
+                                'Eingang / ohne Termin',
+                                displayed.filter(
+                                    (t) => t.status === 'open' && !t.due_on,
+                                ),
+                            )}
+                            {group(
+                                'Erledigt',
+                                displayed.filter((t) => t.status === 'done'),
+                                !query &&
+                                status !== 'done' &&
+                                check !== 'recent',
+                            )}
+                            <div className="flex flex-wrap items-center justify-end gap-2 text-sm text-muted-foreground [&>span]:mr-auto">
+                                <span>
+                                    {pagination.total} Treffer · Seite {page} /{' '}
+                                    {pagination.last_page} (Abschnittszahlen auf
+                                    dieser Seite)
+                                </span>
+                                <Button
+                                    variant="outline"
+                                    disabled={page <= 1}
+                                    onClick={() => setPage(page - 1)}
+                                >
+                                    Zurück
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    disabled={page >= pagination.last_page}
+                                    onClick={() => setPage(page + 1)}
+                                >
+                                    Weiter
+                                </Button>
+                            </div>
+                        </>
+                    )}
+                    {undo && (
+                        <div
+                            className="fixed right-4 bottom-4 z-50 flex flex-wrap items-center gap-3 rounded-lg border bg-popover p-3 text-sm text-popover-foreground shadow-md"
+                            role="status"
+                        >
+                            Status geändert.{' '}
+                            <Button
+                                variant="outline"
+                                onClick={() => {
+                                    const current = tasksRef.current.find(
+                                        (t) => t.id === undo.id,
+                                    );
+                                    if (current)
+                                        mutate(current, {
+                                            status: undo.status,
+                                        });
+                                    setUndo(null);
+                                }}
+                            >
+                                Rückgängig
+                            </Button>
+                        </div>
+                    )}
+                </main>
+            </SidebarInset>
+            {task && (
+                <Sheet
+                    open={!!task}
+                    modal={false}
+                    onOpenChange={(open) => {
+                        if (!open) setSelected(null);
+                    }}
+                >
+                    <SheetContent
+                        className="w-full overflow-y-auto p-0 sm:max-w-md"
+                        onOpenAutoFocus={(event) => event.preventDefault()}
                     >
-                        Neuer
-                    </button>
-                    <button
-                        disabled={historyPage >= historyLast}
-                        onClick={() => setHistoryPage(historyPage + 1)}
-                    >
-                        Älter
-                    </button>
-                </aside>
+                        <SheetHeader className="border-b p-6">
+                            <SheetTitle>Aufgabendetails</SheetTitle>
+                            <SheetDescription>
+                                Titel, Zuordnung, Notizen und Verlauf.
+                            </SheetDescription>
+                        </SheetHeader>
+                        <aside
+                            className="detail-panel space-y-6 p-6"
+                            aria-label="Aufgabendetails"
+                        >
+                            <RecordActions
+                                type="task"
+                                record={task}
+                                disabled={!!drafts[task.id]}
+                                refresh={() => afterTaskDelete(task.id)}
+                            />
+                            <Button
+                                variant="outline"
+                                className="close"
+                                onClick={() => setSelected(null)}
+                            >
+                                Schließen ×
+                            </Button>
+                            <p className="text-xs font-medium text-muted-foreground">
+                                AUFGABENDETAILS
+                            </p>
+                            <Label className="grid gap-2">
+                                Frist
+                                <Input
+                                    type="date"
+                                    value={task.due_on ?? ''}
+                                    onChange={(e) =>
+                                        mutate(task, {
+                                            due_on: e.target.value || null,
+                                        })
+                                    }
+                                />
+                            </Label>
+                            <DraftInput
+                                value={task.title}
+                                label="Titel im Detail"
+                                onCommit={(title) => mutate(task, { title })}
+                            />
+                            <Label className="grid gap-2">
+                                Projekt
+                                <NativeSelect
+                                    value={task.project_id ?? ''}
+                                    onChange={(e) =>
+                                        mutate(task, {
+                                            project_id: e.target.value || null,
+                                        })
+                                    }
+                                >
+                                    <NativeSelectOption value="">
+                                        Ohne Projekt
+                                    </NativeSelectOption>
+                                    {projects.map((p) => (
+                                        <NativeSelectOption
+                                            key={p.id}
+                                            value={p.id}
+                                        >
+                                            {p.name}
+                                        </NativeSelectOption>
+                                    ))}
+                                </NativeSelect>
+                            </Label>
+                            <Label className="grid gap-2">
+                                Zurückstellen bis
+                                <Input
+                                    type="date"
+                                    value={task.snoozed_until ?? ''}
+                                    onChange={(e) =>
+                                        mutate(task, {
+                                            snoozed_until:
+                                                e.target.value || null,
+                                        })
+                                    }
+                                />
+                            </Label>
+                            <Label className="grid gap-2">
+                                Notizen
+                                <DraftInput
+                                    multiline
+                                    maxLength={50000}
+                                    value={task.notes ?? ''}
+                                    label="Notizen"
+                                    onCommit={(notes) =>
+                                        mutate(task, { notes })
+                                    }
+                                />
+                            </Label>
+                            <p>
+                                Angelegt von{' '}
+                                <strong>{name(task.created_by)}</strong>
+                            </p>
+                            <p>
+                                Zugewiesen an{' '}
+                                <strong>{name(task.assigned_to)}</strong>
+                            </p>
+                            <p>
+                                Erledigt markiert von{' '}
+                                <strong>{name(task.completed_by)}</strong>
+                            </p>
+                            <Button
+                                variant="outline"
+                                onClick={() =>
+                                    mutate(task, {
+                                        archived: !task.archived_at,
+                                    } as Partial<Task>)
+                                }
+                            >
+                                <Archive size={16} />{' '}
+                                {task.archived_at
+                                    ? 'Wiederherstellen'
+                                    : 'Archivieren'}
+                            </Button>
+                            <Separator />
+                            <h2 className="text-base font-semibold">Verlauf</h2>
+                            <p className="text-sm text-muted-foreground">
+                                Bedienaktionen, keine Arbeitszeitnachweise.
+                            </p>
+                            {activities.map((a) => (
+                                <ActivityLog
+                                    key={a.id}
+                                    activity={a}
+                                    people={people}
+                                    projects={projects}
+                                />
+                            ))}
+                            <Button
+                                variant="outline"
+                                disabled={historyPage <= 1}
+                                onClick={() => setHistoryPage(historyPage - 1)}
+                            >
+                                Neuer
+                            </Button>
+                            <Button
+                                variant="outline"
+                                disabled={historyPage >= historyLast}
+                                onClick={() => setHistoryPage(historyPage + 1)}
+                            >
+                                Älter
+                            </Button>
+                        </aside>
+                    </SheetContent>
+                </Sheet>
             )}
-        </div>
+        </SidebarProvider>
     );
 }

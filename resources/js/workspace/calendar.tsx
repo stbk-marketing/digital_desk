@@ -1,3 +1,11 @@
+import { Checkbox } from '@/components/ui/checkbox';
+import { ChevronLeft, ChevronRight, GripVertical } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import {
+    NativeSelect,
+    NativeSelectOption,
+} from '@/components/ui/native-select';
 import {
     DndContext,
     KeyboardSensor,
@@ -31,7 +39,7 @@ function CalendarTask({ task, open }: { task: Task; open: () => void }) {
     });
     return (
         <div
-            className="calendar-task"
+            className="calendar-task relative z-10 my-1 flex min-w-0 items-start rounded-md border bg-muted/50 text-xs"
             ref={setNodeRef}
             style={{
                 transform: transform
@@ -39,18 +47,23 @@ function CalendarTask({ task, open }: { task: Task; open: () => void }) {
                     : undefined,
             }}
         >
-            <button
-                className="drag-handle"
+            <Button
+                variant="outline"
+                className="drag-handle h-8 w-6 shrink-0 touch-none border-0 bg-transparent p-1 shadow-none"
                 aria-label={`Verschieben: ${task.title}`}
                 {...attributes}
                 {...listeners}
             >
-                ⠿
-            </button>
-            <button onClick={open}>
+                <GripVertical className="size-3.5" />
+            </Button>
+            <Button
+                variant="ghost"
+                className="h-auto min-h-8 min-w-0 flex-1 justify-start p-1.5 text-left text-xs leading-relaxed whitespace-normal"
+                onClick={open}
+            >
                 {task.status === 'done' ? '✓ ' : '○ '}
                 {task.title}
-            </button>
+            </Button>
         </div>
     );
 }
@@ -72,20 +85,23 @@ function Day({
     return (
         <div
             ref={setNodeRef}
-            className={`calendar-day ${isOver ? 'drop-over' : ''} ${!isSameMonth(date, month) ? 'other-month' : ''}`}
+            className={`calendar-day min-h-20 min-w-0 p-2 md:min-h-28 ${isOver ? 'drop-over bg-accent ring-2 ring-primary ring-inset' : ''} ${!isSameMonth(date, month) ? 'other-month hidden bg-muted/30 text-muted-foreground md:block' : ''}`}
         >
-            <button
+            <Button
+                variant="outline"
                 className={
-                    day === todayBerlin() ? 'day-number current' : 'day-number'
+                    day === todayBerlin()
+                        ? 'day-number current size-8 border-0 bg-primary p-0 text-primary-foreground hover:bg-primary/90'
+                        : 'day-number size-8 border-0 bg-transparent p-0 shadow-none hover:bg-accent'
                 }
                 aria-label={`Aufgabe am ${format(date, 'dd.MM.yyyy')} erfassen`}
                 onClick={() => create(day)}
             >
-                <span className="mobile-weekday">
+                <span className="mobile-weekday mr-1 md:hidden">
                     {format(date, 'EEE', { locale: de })}{' '}
                 </span>
                 {format(date, 'd')}
-            </button>
+            </Button>
             {tasks.map((t) => (
                 <CalendarTask key={t.id} task={t} open={() => open(t)} />
             ))}
@@ -178,9 +194,10 @@ export default function Calendar({
         days.slice(i * 7, i * 7 + 7),
     );
     return (
-        <section className="calendar-view">
-            <div className="calendar-toolbar">
-                <button
+        <section className="calendar-view space-y-4">
+            <div className="calendar-toolbar flex flex-wrap items-center gap-3">
+                <Button
+                    variant="outline"
                     aria-label="Vorheriger Zeitraum"
                     onClick={() =>
                         setDate(
@@ -190,16 +207,17 @@ export default function Calendar({
                         )
                     }
                 >
-                    ←
-                </button>
-                <h2>
+                    <ChevronLeft className="size-4" />
+                </Button>
+                <h2 className="text-base font-semibold">
                     {format(
                         date,
                         mode === 'month' ? 'MMMM yyyy' : "'Woche' w · yyyy",
                         { locale: de },
                     )}
                 </h2>
-                <button
+                <Button
+                    variant="outline"
                     aria-label="Nächster Zeitraum"
                     onClick={() =>
                         setDate(
@@ -209,39 +227,44 @@ export default function Calendar({
                         )
                     }
                 >
-                    →
-                </button>
-                <button onClick={() => setDate(parseISO(todayBerlin()))}>
+                    <ChevronRight className="size-4" />
+                </Button>
+                <Button
+                    variant="outline"
+                    onClick={() => setDate(parseISO(todayBerlin()))}
+                >
                     Heute
-                </button>
-                <select
+                </Button>
+                <NativeSelect
                     aria-label="Kalenderansicht"
                     value={mode}
                     onChange={(e) =>
                         setMode(e.target.value as 'month' | 'week')
                     }
                 >
-                    <option value="month">Monat</option>
-                    <option value="week">Woche</option>
-                </select>
-                <label>
-                    <input
-                        type="checkbox"
+                    <NativeSelectOption value="month">Monat</NativeSelectOption>
+                    <NativeSelectOption value="week">Woche</NativeSelectOption>
+                </NativeSelect>
+                <Label className="flex items-center gap-2">
+                    <Checkbox
                         checked={showTasks}
-                        onChange={(e) => setShowTasks(e.target.checked)}
+                        onCheckedChange={(checked) =>
+                            setShowTasks(checked === true)
+                        }
                     />{' '}
                     Aufgaben
-                </label>
-                <label>
-                    <input
-                        type="checkbox"
+                </Label>
+                <Label className="flex items-center gap-2">
+                    <Checkbox
                         checked={showProjects}
-                        onChange={(e) => setShowProjects(e.target.checked)}
+                        onCheckedChange={(checked) =>
+                            setShowProjects(checked === true)
+                        }
                     />{' '}
                     Projekte
-                </label>
+                </Label>
             </div>
-            <p className="muted">
+            <p className="text-sm text-muted-foreground">
                 Aufgaben am Griff verschieben oder im Detail über das
                 Datumsfeld. Ein Tag öffnet die Schnellerfassung für dieses
                 Datum.
@@ -262,7 +285,7 @@ export default function Calendar({
                     }
                 }}
             >
-                <div className="weekday-grid">
+                <div className="weekday-grid hidden grid-cols-7 text-center text-xs font-medium text-muted-foreground md:grid [&>span]:p-3">
                     {['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].map((d) => (
                         <span key={d}>{d}</span>
                     ))}
@@ -288,8 +311,11 @@ export default function Calendar({
                           )
                         : [];
                     return (
-                        <div className="calendar-week" key={first}>
-                            <div className="calendar-bars">
+                        <div
+                            className="calendar-week overflow-hidden border-x border-t bg-card last:rounded-b-lg last:border-b"
+                            key={first}
+                        >
+                            <div className="calendar-bars grid grid-cols-7 gap-1 p-1">
                                 {bars.map((p) => {
                                     const start =
                                         p.starts_on! < first
@@ -306,22 +332,24 @@ export default function Calendar({
                                                   week[0],
                                               );
                                     return (
-                                        <button
+                                        <Button
+                                            variant="outline"
+                                            className="h-7 min-w-0 justify-start truncate rounded-md border-0 px-2 text-xs text-primary-foreground"
                                             title={`${p.name}: ${p.starts_on} – ${p.ends_on}`}
                                             onClick={() => openProject(p.id)}
                                             key={p.id}
                                             style={{
                                                 gridColumn: `${start + 1} / ${end + 2}`,
                                                 background:
-                                                    p.color || '#52764b',
+                                                    p.color || 'var(--primary)',
                                             }}
                                         >
                                             {p.name}
-                                        </button>
+                                        </Button>
                                     );
                                 })}
                             </div>
-                            <div className="calendar-grid">
+                            <div className="calendar-grid grid grid-cols-1 divide-y md:grid-cols-7 md:divide-x md:divide-y-0">
                                 {week.map((day) => (
                                     <Day
                                         key={format(day, 'yyyy-MM-dd')}

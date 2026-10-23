@@ -136,8 +136,13 @@ class WorkspaceController extends Controller
 
         return DB::transaction(function () use ($data) {
             $rows = DB::table('workspace_changes')->where('id', '>', $data['since'])->orderBy('id')->limit(200)->get();
+            $removed = $rows->unique(fn ($row) => $row->subject_type.':'.$row->subject_id)->filter(function ($row) {
+                $class = $row->subject_type === 'task' ? Task::class : Project::class;
 
-            return response()->json(['cursor' => $rows->isEmpty() ? (int) $data['since'] : $rows->last()->id, 'changed' => $rows->isNotEmpty(), 'more' => $rows->count() === 200]);
+                return ! $class::whereKey($row->subject_id)->exists();
+            })->map(fn ($row) => ['type' => $row->subject_type, 'id' => $row->subject_id])->values();
+
+            return response()->json(['cursor' => $rows->isEmpty() ? (int) $data['since'] : $rows->last()->id, 'changed' => $rows->isNotEmpty(), 'more' => $rows->count() === 200, 'removed' => $removed]);
         });
     }
 }

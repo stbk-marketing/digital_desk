@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 
 export default function DraftInput({
     value,
@@ -7,6 +9,7 @@ export default function DraftInput({
     multiline = false,
     maxLength = 500,
     disabled = false,
+    className,
 }: {
     value: string;
     onCommit: (value: string) => void;
@@ -14,6 +17,7 @@ export default function DraftInput({
     multiline?: boolean;
     maxLength?: number;
     disabled?: boolean;
+    className?: string;
 }) {
     const [text, setText] = useState(value);
     const draft = useRef(value);
@@ -59,6 +63,7 @@ export default function DraftInput({
         'aria-label': label,
         maxLength,
         disabled,
+        className,
         onChange: (
             event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
         ) => {
@@ -72,8 +77,8 @@ export default function DraftInput({
         onBlur: flush,
     };
     return multiline ? (
-        <textarea {...props} rows={5} />
+        <Textarea {...props} rows={5} />
     ) : (
-        <input {...props} type="text" />
+        <Input {...props} type="text" />
     );
 }

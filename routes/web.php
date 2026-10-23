@@ -16,7 +16,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::patch('projects/{project}', 'updateProject');
         Route::get('activities', 'activities');
         Route::get('changes', 'changes');
+        Route::get('year/{year}', [\App\Http\Controllers\ReportController::class, 'json'])->whereNumber('year');
     });
+    Route::get('reports/year/{year}/print', [\App\Http\Controllers\ReportController::class, 'print'])->whereNumber('year');
+    Route::get('reports/year/{year}.csv', [\App\Http\Controllers\ReportController::class, 'yearCsv'])->whereNumber('year');
+    Route::get('reports/activities.csv', [\App\Http\Controllers\ReportController::class, 'activitiesCsv']);
+    Route::get('reports/year/{year}', [\App\Http\Controllers\ReportController::class, 'print'])->whereNumber('year');
 });
 
 require __DIR__.'/settings.php';

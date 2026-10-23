@@ -2,12 +2,15 @@ import { Head, router, usePage } from '@inertiajs/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Archive, ArrowDownToLine, CalendarDays, CheckCheck, ClipboardList, Folder, History, LogOut, Plus, Search, Settings, Snowflake } from 'lucide-react';
 import DraftInput from '@/workspace/draft-input';
+import Projects from '@/workspace/projects';
+import Calendar from '@/workspace/calendar';
+import YearPlan from '@/workspace/year-plan';
 import { api, todayBerlin } from '@/workspace/types';
 import type { Activity, Failure, Page, Person, Project, Task } from '@/workspace/types';
 import '../../css/workspace.css';
 
 type View = 'Schreibtisch' | 'Kalender' | 'Projekte' | 'Jahresplan' | 'Wochencheck';
-type Draft = { data: Partial<Task>; error?: Failure; saving?: boolean; create?: boolean };
+type Draft = { data: Partial<Task>; error?: Failure; saving?: boolean; create?: boolean; base?: Task };
 const views: { name: View; icon: typeof ClipboardList }[] = [{ name: 'Schreibtisch', icon: ClipboardList }, { name: 'Kalender', icon: CalendarDays }, { name: 'Projekte', icon: Folder }, { name: 'Jahresplan', icon: ArrowDownToLine }, { name: 'Wochencheck', icon: CheckCheck }];
 
 export default function Workspace({ members, people }: { members: Person[]; people: Person[] }) {
@@ -20,6 +23,8 @@ export default function Workspace({ members, people }: { members: Person[]; peop
     const draftRef = useRef<Record<string, Draft>>({});
     const chains = useRef<Record<string, Promise<void>>>({});
     const [title, setTitle] = useState('');
+    const [captureDate, setCaptureDate] = useState<string | null>(null);
+    const [revision, setRevision] = useState(0);
     const [query, setQuery] = useState('');
     const [status, setStatus] = useState('all');
     const [project, setProject] = useState('');
@@ -70,7 +75,7 @@ export default function Workspace({ members, people }: { members: Person[]; peop
     }, [selected, tasks, historyPage]);
     const mutate = (task: Task, data: Partial<Task>, retry = false) => {
         const old = draftRef.current[task.id];
-        updateDrafts({ ...draftRef.current, [task.id]: { data: { ...old?.data, ...data }, saving: true } });
+        updateDrafts({ ...draftRef.current, [task.id]: { data: { ...old?.data, ...data }, saving: true, base: old?.base ?? task } });
         chains.current[task.id] = (chains.current[task.id] ?? Promise.resolve()).then(async () => {
             const draft = draftRef.current[task.id];
             if (!draft || (draft.error && !retry)) return;
@@ -82,10 +87,10 @@ export default function Workspace({ members, people }: { members: Person[]; peop
                 const remaining = { ...draftRef.current[task.id]?.data };
                 for (const key of Object.keys(payload) as (keyof Task)[]) if (remaining[key] === payload[key]) delete remaining[key];
                 const next = { ...draftRef.current }; if (Object.keys(remaining).length) next[task.id] = { data: remaining, saving: true }; else delete next[task.id]; updateDrafts(next);
-                void loadProjects();
+                setRevision(r => r + 1); void loadProjects();
             } catch (error) {
                 const failure = error as Failure;
-                updateDrafts({ ...draftRef.current, [task.id]: { data: draftRef.current[task.id]?.data ?? payload, error: failure } });
+                updateDrafts({ ...draftRef.current, [task.id]: { data: draftRef.current[task.id]?.data ?? payload, error: failure, base: task } });
             }
         });
     };
@@ -96,14 +101,14 @@ export default function Workspace({ members, people }: { members: Person[]; peop
             const next = { ...draftRef.current }; delete next[id]; updateDrafts(next); accept(task); void loadProjects();
         } catch (error) { updateDrafts({ ...draftRef.current, [id]: { data, create: true, error: error as Failure } }); }
     };
-    const quickCreate = (due_on: string | null = null) => {
+    const quickCreate = (due_on: string | null = captureDate) => {
         if (!title.trim()) { input.current?.focus(); return; }
         void create(`local-${crypto.randomUUID()}`, { title: title.trim(), due_on, project_id: project || null }); setTitle(''); input.current?.focus();
     };
     const displayed: Task[] = [...Object.entries(drafts).filter(([, d]) => d.create).map(([id, d]) => ({ id, title: '', status: 'open', version: 0, created_by: auth.user.id, created_at: new Date().toISOString(), ...d.data } as Task)), ...tasks.map(t => ({ ...t, ...drafts[t.id]?.data }))];
     // A failing draft stays visible even after a filter or team refresh.
     for (const [id, draft] of Object.entries(drafts)) if (!draft.create && !displayed.some(t => t.id === id)) {
-        const base = tasksRef.current.find(t => t.id === id); if (base) displayed.unshift({ ...base, ...draft.data });
+        const base = draft.base; if (base) displayed.unshift({ ...base, ...draft.data });
     }
     const task = displayed.find(t => t.id === selected);
     const name = (id: number | null) => people.find(p => p.id === id)?.name ?? '—';
@@ -123,7 +128,11 @@ export default function Workspace({ members, people }: { members: Person[]; peop
         <main className="workspace-main"><header><div><p className="eyebrow">STADTBÄCKEREI KÜHL · GEMEINSAM GUT ORGANISIERT</p><h1>{view}</h1><p className="subtitle">{view === 'Schreibtisch' ? 'Gedanken festhalten. Gemeinsam Dinge erledigen.' : 'Alles im Blick, Schritt für Schritt.'}</p></div><span className="today">{new Intl.DateTimeFormat('de-DE', { dateStyle: 'full', timeZone: 'Europe/Berlin' }).format(new Date())}</span></header>
         <form className="quick-capture" onSubmit={e => { e.preventDefault(); quickCreate(); }}><Plus size={23} /><input ref={input} aria-label="Neue Aufgabe" placeholder="Was gibt es zu tun? Einfach schreiben …" maxLength={500} value={title} onChange={e => setTitle(e.target.value)} /><kbd>Enter ↵</kbd><button type="submit" aria-label="Aufgabe hinzufügen">Hinzufügen</button></form>
         <div className="filter-bar"><label className="search"><Search size={17} /><input aria-label="Alle Aufgaben durchsuchen" placeholder="Suchen, auch in erledigten Aufgaben …" value={query} onChange={e => { setQuery(e.target.value); setPage(1); }} /></label><select aria-label="Statusfilter" value={status} onChange={e => { setStatus(e.target.value); setPage(1); }}><option value="all">Alle Status</option><option value="open">Offen</option><option value="done">Erledigt</option><option value="overdue">Überfällig</option></select><select aria-label="Projektfilter" value={project} onChange={e => { setProject(e.target.value); setPage(1); }}><option value="">Alle Projekte</option>{projects.map(p => <option value={p.id} key={p.id}>{p.name}</option>)}</select><select aria-label="Personenfilter" value={person} onChange={e => { setPerson(e.target.value); setPage(1); }}><option value="">Alle Personen</option>{members.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select><select aria-label="Archivfilter" value={archive} onChange={e => { setArchive(e.target.value); setPage(1); }}><option value="current">Aktueller Schreibtisch</option><option value="all">Alle inkl. Archiv</option><option value="archived">Archiv</option></select></div>
+        {captureDate && <p className="capture-date">Neue Aufgabe am {captureDate} <button onClick={() => setCaptureDate(null)}>Datum entfernen ×</button></p>}
         {notice && <p className="notice" role="alert">{notice} <button onClick={() => void load()}>Erneut laden</button></p>}
+        {view === 'Jahresplan' && <YearPlan revision={revision} />}
+        {view === 'Projekte' && <Projects projects={project ? projects.filter(p => p.id === project) : projects} people={people} refresh={loadProjects} openTasks={id => { setProject(id); setView('Schreibtisch'); setPage(1); input.current?.focus(); }} />}
+        {view === 'Kalender' && <Calendar projects={projects} person={person} project={project} revision={revision} create={date => { setCaptureDate(date); input.current?.focus(); }} openTask={t => { accept(t); openDetail(t.id); }} openProject={id => { setProject(id); setView('Projekte'); }} mutate={mutate} />}
         {view === 'Wochencheck' && <div className="check-tabs">{[['overdue', 'Überfällig'], ['undated', 'Ohne Termin seit > 7 Tagen'], ['unassigned', 'Ohne Projekt seit > 7 Tagen'], ['recent', 'Diese Woche erledigt']].map(([value, label]) => <button className={check === value ? 'active' : ''} key={value} onClick={() => { setCheck(value); setPage(1); }}>{label}</button>)}</div>}
         {(view === 'Schreibtisch' || view === 'Wochencheck') && <>{group('Überfällig', displayed.filter(t => t.status === 'open' && t.due_on && t.due_on < todayBerlin()))}{group('Heute', displayed.filter(t => t.status === 'open' && t.due_on === todayBerlin()))}{group('Demnächst', displayed.filter(t => t.status === 'open' && t.due_on && t.due_on > todayBerlin()))}{group('Eingang / ohne Termin', displayed.filter(t => t.status === 'open' && !t.due_on))}{group('Erledigt', displayed.filter(t => t.status === 'done'), !query && status !== 'done' && check !== 'recent')}<div className="pagination"><span>{pagination.total} Treffer · Seite {page} / {pagination.last_page} (Abschnittszahlen auf dieser Seite)</span><button disabled={page <= 1} onClick={() => setPage(page - 1)}>Zurück</button><button disabled={page >= pagination.last_page} onClick={() => setPage(page + 1)}>Weiter</button></div></>}
         {undo && <div className="undo" role="status">Status geändert. <button onClick={() => { const current = tasksRef.current.find(t => t.id === undo.id); if (current) mutate(current, { status: undo.status }); setUndo(null); }}>Rückgängig</button></div>}

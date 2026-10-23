@@ -15,6 +15,7 @@ class RegistrationTest extends TestCase
         parent::setUp();
 
         $this->skipUnlessFortifyHas(Features::registration());
+        config(['workspace.registration_enabled' => true, 'workspace.registration_code' => str_repeat('a', 32)]);
     }
 
     public function test_registration_screen_can_be_rendered()
@@ -28,12 +29,13 @@ class RegistrationTest extends TestCase
     {
         $response = $this->post(route('register.store'), [
             'name' => 'Test User',
+            'registration_code' => str_repeat('a', 32),
             'email' => 'test@example.com',
             'password' => 'password',
             'password_confirmation' => 'password',
         ]);
 
         $this->assertAuthenticated();
-        $response->assertRedirect(route('dashboard', absolute: false));
+        $response->assertRedirect('/workspace');
     }
 }

@@ -19,6 +19,8 @@ class CreateNewUser implements CreatesNewUsers
      */
     public function create(array $input): User
     {
+        $code = (string) config('workspace.registration_code');
+        abort_unless(config('workspace.registration_enabled') && strlen($code) >= 24 && hash_equals($code, $input['registration_code'] ?? ''), 403);
         Validator::make($input, [
             ...$this->profileRules(),
             'password' => $this->passwordRules(),

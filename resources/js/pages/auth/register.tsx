@@ -27,6 +27,11 @@ export default function Register({ passwordRules }: Props) {
                     <>
                         <div className="grid gap-6">
                             <div className="grid gap-2">
+                                <Label htmlFor="registration_code">Interner Registrierungscode</Label>
+                                <Input id="registration_code" name="registration_code" type="password" required autoComplete="off" />
+                                <InputError message={errors.registration_code} />
+                            </div>
+                            <div className="grid gap-2">
                                 <Label htmlFor="name">Name</Label>
                                 <Input
                                     id="name"

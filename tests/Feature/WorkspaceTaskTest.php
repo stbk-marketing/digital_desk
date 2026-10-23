@@ -58,6 +58,20 @@ class WorkspaceTaskTest extends TestCase
         $this->actingAs(User::factory()->unverified()->create())->getJson('/api/workspace/tasks')->assertForbidden();
     }
 
+    public function test_unicode_search_notes_and_idempotent_retries(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $data = ['title' => 'Äpfel für KÜHL', 'notes' => 'Überprüfung', 'request_id' => '0a7b2e56-75aa-4ba2-aad6-12bc07c6be71'];
+        $task = $this->postJson('/api/workspace/tasks', $data)->assertCreated()->json();
+        $this->postJson('/api/workspace/tasks', $data)->assertCreated()->assertJsonPath('id', $task['id']);
+        $this->assertDatabaseCount('tasks', 1);
+        $this->assertDatabaseCount('activities', 1);
+        $this->getJson('/api/workspace/tasks?q='.urlencode('äPFEL'))->assertJsonPath('tasks.total', 1);
+        $this->getJson('/api/workspace/tasks?q='.urlencode('überprüfung'))->assertJsonPath('tasks.total', 1);
+        $this->patchJson('/api/workspace/tasks/'.$task['id'], ['notes' => null, 'expected_version' => 1])->assertOk();
+        $this->getJson('/api/workspace/tasks?q='.urlencode('überprüfung'))->assertJsonPath('tasks.total', 0);
+    }
+
     public function test_activity_is_append_only_and_transaction_rolls_back_on_audit_failure(): void
     {
         $this->actingAs(User::factory()->create());

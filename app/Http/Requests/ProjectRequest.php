@@ -13,9 +13,11 @@ class ProjectRequest extends FormRequest
         return $this->user()->can('write', Project::class);
     }
 
+    /** @return array<string, array<mixed>> */
     public function rules(): array
     {
         return [
+            'request_id' => ['sometimes', 'uuid'],
             'name' => [$this->isMethod('post') ? 'required' : 'sometimes', 'required', 'string', 'max:160'],
             'description' => ['sometimes', 'nullable', 'string', 'max:50000'],
             'starts_on' => ['sometimes', 'nullable', 'date_format:Y-m-d'],

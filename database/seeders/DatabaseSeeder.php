@@ -15,6 +15,9 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
+        if (! app()->environment('local', 'testing')) {
+            throw new \RuntimeException('Demodaten sind ausschließlich lokal erlaubt.');
+        }
         // User::factory(10)->create();
 
         User::factory()->create([

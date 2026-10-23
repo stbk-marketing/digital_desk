@@ -10,4 +10,6 @@ class Task extends Model
     use HasUlids;
 
     protected $guarded = [];
+
+    protected $hidden = ['search_text'];
 }

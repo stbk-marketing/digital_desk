@@ -8,6 +8,7 @@ use Carbon\CarbonImmutable;
 
 class YearReport
 {
+    /** @return array<string, mixed> */
     public function data(int $year, ?string $status = null): array
     {
         abort_unless($year >= 1900 && $year <= 2200, 404);
@@ -28,12 +29,14 @@ class YearReport
                     $row['left'] = $start->diffInDays($from) / $days * 100;
                     $row['width'] = ($from->diffInDays($to) + 1) / $days * 100;
                 }
+
                 return $row;
             });
         $months = [];
         for ($i = 1; $i <= 12; $i++) {
             $month = $start->month($i);
-            $months[] = ['name' => $month->locale('de')->isoFormat('MMM'), 'width' => $month->daysInMonth / $days * 100];
+            $month->locale('de');
+            $months[] = ['name' => $month->isoFormat('MMM'), 'width' => $month->daysInMonth / $days * 100];
         }
 
         return ['year' => $year, 'status' => $status, 'months' => $months, 'scheduled' => $projects->filter(fn ($p) => $p['left'] !== null)->values(), 'unscheduled' => $projects->filter(fn ($p) => $p['left'] === null)->values()];

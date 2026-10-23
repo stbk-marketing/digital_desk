@@ -11,6 +11,11 @@ class RegistrationGuard
 {
     public function handle(Request $request, Closure $next): mixed
     {
+        if ($request->isMethod('post') && $request->is('forgot-password', 'reset-password')) {
+            $key = 'workspace-reset:'.$request->ip();
+            abort_if(RateLimiter::tooManyAttempts($key, 6), 429);
+            RateLimiter::hit($key, 60);
+        }
         if ($request->isMethod('post') && $request->is('register')) {
             $key = 'workspace-register:'.$request->ip();
             abort_if(RateLimiter::tooManyAttempts($key, 5), 429);

@@ -10,4 +10,6 @@ class Project extends Model
     use HasUlids;
 
     protected $guarded = [];
+
+    protected $hidden = ['search_text'];
 }

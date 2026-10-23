@@ -13,9 +13,11 @@ class TaskRequest extends FormRequest
         return $this->user()->can('write', Task::class);
     }
 
+    /** @return array<string, array<mixed>> */
     public function rules(): array
     {
         return [
+            'request_id' => ['sometimes', 'uuid'],
             'title' => [$this->isMethod('post') ? 'required' : 'sometimes', 'required', 'string', 'max:500'],
             'notes' => ['sometimes', 'nullable', 'string', 'max:50000'],
             'status' => ['sometimes', Rule::in(['open', 'done'])],

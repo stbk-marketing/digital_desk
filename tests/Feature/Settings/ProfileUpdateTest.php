@@ -72,11 +72,10 @@ class ProfileUpdateTest extends TestCase
             ]);
 
         $response
-            ->assertSessionHasNoErrors()
-            ->assertRedirect(route('home'));
+            ->assertForbidden();
 
-        $this->assertGuest();
-        $this->assertNull($user->fresh());
+        $this->assertAuthenticated();
+        $this->assertNotNull($user->fresh());
     }
 
     public function test_correct_password_must_be_provided_to_delete_account()

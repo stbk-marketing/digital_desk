@@ -5,16 +5,25 @@ namespace App\Actions;
 use App\Models\Activity;
 use App\Models\Project;
 use App\Models\Task;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class MutateWorkspace
 {
-    public function execute(string $type, array $data, int $actor, ?Model $record = null): Model
+    /** @param array<string, mixed> $data */
+    public function execute(string $type, array $data, int $actor, Task|Project|null $record = null): Task|Project
     {
         return DB::transaction(function () use ($type, $data, $actor, $record) {
+            $requestId = $data['request_id'] ?? null;
+            unset($data['request_id']);
+            $class = $type === 'task' ? Task::class : Project::class;
+            if (! $record && $requestId) {
+                $receipt = DB::table('workspace_requests')->where(['actor_id' => $actor, 'request_id' => $requestId, 'subject_type' => $type])->first();
+                if ($receipt) {
+                    return $class::query()->whereKey($receipt->subject_id)->firstOrFail();
+                }
+            }
             $expected = $data['expected_version'] ?? null;
             unset($data['expected_version']);
             $record = $record?->fresh();
@@ -27,15 +36,26 @@ class MutateWorkspace
                     $data['archived_at'] = $data['archived'] ? now()->toDateTimeString() : null;
                     unset($data['archived']);
                 }
-                if (isset($data['status']) && $data['status'] !== ($record?->status ?? 'open')) {
+                if (isset($data['status']) && $data['status'] !== ($record->status ?? 'open')) {
                     $data['completed_at'] = $data['status'] === 'done' ? now()->toDateTimeString() : null;
                     $data['completed_by'] = $data['status'] === 'done' ? $actor : null;
                 }
             } else {
-                $start = array_key_exists('starts_on', $data) ? $data['starts_on'] : $record?->starts_on;
-                $end = array_key_exists('ends_on', $data) ? $data['ends_on'] : $record?->ends_on;
+                $start = array_key_exists('starts_on', $data) ? $data['starts_on'] : ($record instanceof Project ? $record->starts_on : null);
+                $end = array_key_exists('ends_on', $data) ? $data['ends_on'] : ($record instanceof Project ? $record->ends_on : null);
                 if ($start && $end && $end < $start) {
                     throw ValidationException::withMessages(['ends_on' => 'Ende muss am oder nach dem Start liegen.']);
+                }
+            }
+            if ($type === 'task') {
+                $data['search_text'] = mb_strtolower(($data['title'] ?? ($record instanceof Task ? $record->title : ''))."\n".($data['notes'] ?? ($record instanceof Task ? $record->notes : '')), 'UTF-8');
+                if (array_key_exists('notes', $data) && $data['notes'] === null) {
+                    $data['search_text'] = mb_strtolower(($data['title'] ?? $record?->getAttribute('title'))."\n", 'UTF-8');
+                }
+            } else {
+                $data['search_text'] = mb_strtolower(($data['name'] ?? ($record instanceof Project ? $record->name : ''))."\n".($data['description'] ?? ($record instanceof Project ? $record->description : '')), 'UTF-8');
+                if (array_key_exists('description', $data) && $data['description'] === null) {
+                    $data['search_text'] = mb_strtolower(($data['name'] ?? $record?->getAttribute('name'))."\n", 'UTF-8');
                 }
             }
             if ($record) {
@@ -47,15 +67,17 @@ class MutateWorkspace
                 }
                 $record->refresh();
             } else {
-                $class = $type === 'task' ? Task::class : Project::class;
                 $record = $class::create($data + ['created_by' => $actor]);
                 $record->refresh();
+                if ($requestId) {
+                    DB::table('workspace_requests')->insert(['actor_id' => $actor, 'request_id' => $requestId, 'subject_type' => $type, 'subject_id' => $record->id]);
+                }
             }
             $after = $record->getAttributes();
             $changedBefore = [];
             $changedAfter = [];
             foreach ($after as $field => $value) {
-                if (! in_array($field, ['updated_at', 'version']) && (! $before || ($before[$field] ?? null) !== $value)) {
+                if (! in_array($field, ['updated_at', 'version', 'search_text']) && (! $before || ($before[$field] ?? null) !== $value)) {
                     $changedBefore[$field] = $before[$field] ?? null;
                     $changedAfter[$field] = $value;
                 }

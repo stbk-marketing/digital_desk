@@ -33,7 +33,9 @@ class YearReportTest extends TestCase
     {
         $user = User::factory()->create();
         $this->actingAs($user);
-        for ($i = 0; $i < 40; $i++) (new MutateWorkspace)->execute('project', ['name' => 'Äußerst langer Projektname für die Stadtbäckerei Kühl '.$i, 'starts_on' => '2026-01-01', 'ends_on' => '2026-12-31'], $user->id);
+        for ($i = 0; $i < 40; $i++) {
+            (new MutateWorkspace)->execute('project', ['name' => 'Äußerst langer Projektname für die Stadtbäckerei Kühl '.$i, 'starts_on' => '2026-01-01', 'ends_on' => '2026-12-31'], $user->id);
+        }
         (new MutateWorkspace)->execute('project', ['name' => '=HYPERLINK("test")'], $user->id);
         $this->get('/reports/year/2026/print')->assertOk()->assertSee('A3 landscape', false)->assertSee('table-header-group', false)->assertSee('Stadtbäckerei Kühl 39')->assertDontSee('workspace-nav');
         $csv = $this->get('/reports/year/2026.csv')->assertOk()->streamedContent();
@@ -46,9 +48,17 @@ class YearReportTest extends TestCase
     public function test_all_report_urls_require_verification_and_active_account(): void
     {
         foreach (['/reports/year/2026', '/reports/year/2026/print', '/reports/year/2026.csv', '/reports/activities.csv', '/api/workspace/year/2026'] as $url) {
-            $this->get($url)->assertRedirect('/login');
+            if (str_starts_with($url, '/api/')) {
+                $this->getJson($url)->assertUnauthorized();
+            } else {
+                $this->get($url)->assertRedirect('/login');
+            }
             $user = User::factory()->unverified()->create();
-            $this->actingAs($user)->get($url)->assertRedirect('/email/verify');
+            if (str_starts_with($url, '/api/')) {
+                $this->actingAs($user)->getJson($url)->assertForbidden();
+            } else {
+                $this->actingAs($user)->get($url)->assertRedirect('/email/verify');
+            }
             auth()->logout();
         }
     }

@@ -55,3 +55,4 @@ Die Browserprüfung nutzt installiertes Google Chrome, Port 8123 und ausschließ
 Fehlgeschlagene Änderungen bleiben sichtbar und lassen sich erneut senden. Entwürfe bleiben im Arbeitsspeicher des offenen Tabs; beim Verlassen mit ungespeicherten Änderungen warnt der Browser. Es gibt keine dauerhafte Offline-Speicherung sensibler Workspace-Inhalte. Geplante Projektzeiträume und protokollierte Bedienaktionen sind keine Nachweise geleisteter Arbeitszeit.
 
 Basis: [offizielles Laravel React Starter Kit](https://github.com/laravel/react-starter-kit), MIT-Lizenz.
+# digital_desk

@@ -6,8 +6,8 @@ import {
     CheckCheck,
     LogOut,
     Settings,
-    Snowflake,
     Trash2,
+    BookHeart,
 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
@@ -53,11 +53,11 @@ export default function WorkspaceNavigation({
                         <SidebarMenuButton size="lg" asChild>
                             <a href="/workspace">
                                 <div className="flex aspect-square size-8 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground">
-                                    <Snowflake className="size-4" />
+                                    <BookHeart className="size-4" />
                                 </div>
                                 <div className="grid flex-1 text-left text-sm leading-tight">
                                     <span className="truncate font-semibold">
-                                        Kühl Workspace
+                                        Workspace
                                     </span>
                                     <span className="truncate text-xs text-muted-foreground">
                                         Stadtbäckerei Kühl

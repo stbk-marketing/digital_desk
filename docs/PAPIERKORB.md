@@ -42,16 +42,16 @@ Auslieferung: vorhandenes Backup erstellen, Release einspielen und `php artisan 
 
 ### Abschlussprotokoll vom 23. Oktober 2026
 
-| Prüfung | Ergebnis |
-| --- | --- |
-| `composer test` | Pint bestanden; PHPStan ohne Fehler; 69 Tests: 63 bestanden, 6 wie bisher übersprungen; 359 Assertions |
-| `npm run types:check` | Bestanden |
-| `npm run lint` / `npm run check:fix` | Keine Lintfehler oder Lintwarnungen; Formatierung bestanden |
-| `npm run build` | Produktionsbuild bestanden |
-| `npm run build:ssr` | Client- und SSR-Produktionsbuild bestanden |
-| `npm run test:browser` | Alle 12 Tests bestanden, 3,7 Minuten; 8 vorhandene Tests und 4 neue Papierkorb-/Synchronisierungstests |
-| `php artisan migrate --no-interaction` | Lokale Papierkorb-Migration erfolgreich angewendet |
-| `git diff --check` | Bestanden |
+| Prüfung                                | Ergebnis                                                                                               |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `composer test`                        | Pint bestanden; PHPStan ohne Fehler; 69 Tests: 63 bestanden, 6 wie bisher übersprungen; 359 Assertions |
+| `npm run types:check`                  | Bestanden                                                                                              |
+| `npm run lint` / `npm run check:fix`   | Keine Lintfehler oder Lintwarnungen; Formatierung bestanden                                            |
+| `npm run build`                        | Produktionsbuild bestanden                                                                             |
+| `npm run build:ssr`                    | Client- und SSR-Produktionsbuild bestanden                                                             |
+| `npm run test:browser`                 | Alle 12 Tests bestanden, 3,7 Minuten; 8 vorhandene Tests und 4 neue Papierkorb-/Synchronisierungstests |
+| `php artisan migrate --no-interaction` | Lokale Papierkorb-Migration erfolgreich angewendet                                                     |
+| `git diff --check`                     | Bestanden                                                                                              |
 
 Darstellung: vorhandene Light-/Dark- und Responsive-Tests weiterhin bestanden; zusätzlich Papierkorb in Light Mode und bei 390 Pixeln im Dark Mode geprüft und Screenshots gesichtet. Die bestehenden Tests für Tastaturbedienung, Autosave, Konflikte, Registrierung/CSRF, zwei Sitzungen, Kalender und Jahresdruck bestehen. A3-/A4-PDFs mit 40 langen Projektnamen wurden erneut erzeugt; kein physischer Druckertest.
 

@@ -324,7 +324,7 @@ export default function Projects({
                                             aria-label="Projektfarbe"
                                             className="w-14 p-1"
                                             type="color"
-                                            value={p.color || '#42684c'}
+                                            value={p.color || '#d33682'}
                                             onChange={(e) =>
                                                 update(server, {
                                                     color: e.target.value,

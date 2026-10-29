@@ -24,23 +24,28 @@ export default function TaskSection({
     const [open, setOpen] = useState(!collapsed);
     useEffect(() => setOpen(!collapsed), [collapsed]);
     return (
-        <Card className="task-group gap-0 overflow-hidden py-0 shadow-none">
+        <Card className="task-group gap-0 overflow-hidden py-0 shadow-sm">
             <Collapsible open={open} onOpenChange={setOpen}>
                 <CollapsibleTrigger asChild>
                     <Button
                         variant="ghost"
-                        className="h-auto w-full justify-start rounded-none p-4"
+                        className="h-auto w-full justify-start rounded-none bg-card px-4 py-3 text-card-foreground hover:bg-card/80"
                     >
                         <ChevronDown
                             className={`size-4 text-muted-foreground transition-transform ${open ? '' : '-rotate-90'}`}
                         />
-                        <span>{label}</span>
-                        <Badge variant="secondary" className="ml-auto">
+                        <span className="font-semibold">{label}</span>
+                        <Badge
+                            variant="outline"
+                            className="ml-auto bg-background font-mono text-xs text-foreground"
+                        >
                             {count}
                         </Badge>
                     </Button>
                 </CollapsibleTrigger>
-                <CollapsibleContent>{children}</CollapsibleContent>
+                <CollapsibleContent className="space-y-2 border-t bg-background/60 p-2">
+                    {children}
+                </CollapsibleContent>
             </Collapsible>
         </Card>
     );

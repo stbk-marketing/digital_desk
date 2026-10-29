@@ -418,7 +418,7 @@ export default function Workspace({
     };
     const row = (t: Task) => (
         <div
-            className={`task-row flex flex-wrap items-center gap-3 border-t p-4 ${t.status === 'done' ? 'is-done' : ''}`}
+            className={`task-row flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border/60 bg-background p-3 transition-[border-color,box-shadow] focus-within:border-ring focus-within:ring-1 focus-within:ring-ring/30 hover:border-border hover:shadow-xs ${t.status === 'done' ? 'is-done' : ''}`}
             key={t.id}
         >
             <Checkbox
@@ -433,8 +433,8 @@ export default function Workspace({
                     label="Aufgabentitel"
                     className={
                         t.status === 'done'
-                            ? 'text-muted-foreground line-through'
-                            : undefined
+                            ? 'border-transparent bg-transparent font-medium text-muted-foreground line-through shadow-none hover:border-input focus-visible:border-ring'
+                            : 'border-transparent bg-transparent font-semibold shadow-none hover:border-input focus-visible:border-ring'
                     }
                     disabled={t.id.startsWith('local-')}
                     onCommit={(title) => mutate(t, { title })}
@@ -447,8 +447,8 @@ export default function Workspace({
             <Input
                 className={
                     t.due_on && t.due_on < todayBerlin() && t.status === 'open'
-                        ? 'w-[9rem] text-destructive'
-                        : 'w-[9rem]'
+                        ? 'w-[9rem] border-destructive/50 bg-background text-destructive shadow-none'
+                        : 'w-[9rem] border-input/60 bg-background shadow-none'
                 }
                 aria-label="Frist"
                 type="date"
@@ -458,7 +458,7 @@ export default function Workspace({
             />
             <NativeSelect
                 aria-label="Zuständig"
-                className="w-32 truncate"
+                className="w-32 truncate border-input/60 bg-background shadow-none"
                 disabled={t.id.startsWith('local-')}
                 value={t.assigned_to ?? ''}
                 onChange={(e) =>
@@ -484,7 +484,7 @@ export default function Workspace({
             </NativeSelect>
             <NativeSelect
                 aria-label="Projekt zuordnen"
-                className="w-36 truncate"
+                className="w-36 truncate border-input/60 bg-background shadow-none"
                 disabled={t.id.startsWith('local-')}
                 value={t.project_id ?? ''}
                 onChange={(e) =>
@@ -629,7 +629,7 @@ export default function Workspace({
                 <main className="workspace-main flex min-w-0 flex-1 flex-col gap-6 p-4 md:p-6">
                     <header className="flex flex-wrap items-start justify-between gap-4">
                         <div>
-                            <h1 className="mt-1 text-xl font-semibold">
+                            <h1 className="mt-1 text-2xl font-semibold tracking-tight">
                                 {view}
                             </h1>
                             <p className="mt-1 text-sm text-muted-foreground">
@@ -646,16 +646,16 @@ export default function Workspace({
                         </span>
                     </header>
                     <form
-                        className="quick-capture sticky top-0 z-20 flex items-center gap-3 rounded-xl border bg-card p-4 text-card-foreground shadow-xs"
+                        className="quick-capture sticky top-0 z-20 flex items-center gap-3 rounded-xl border border-primary/50 bg-card p-4 text-card-foreground shadow-md focus-within:border-primary focus-within:ring-2 focus-within:ring-ring/20"
                         onSubmit={(e) => {
                             e.preventDefault();
                             quickCreate();
                         }}
                     >
-                        <Plus size={23} />
+                        <Plus size={23} className="shrink-0 text-primary" />
                         <Input
                             ref={input}
-                            className="min-w-0 flex-1"
+                            className="min-w-0 flex-1 bg-background"
                             aria-label="Neue Aufgabe"
                             placeholder="Was gibt es zu tun? Einfach schreiben …"
                             maxLength={500}
@@ -669,7 +669,7 @@ export default function Workspace({
                             Hinzufügen
                         </Button>
                     </form>
-                    <div className="filter-bar flex min-w-0 flex-wrap items-center gap-3">
+                    <div className="filter-bar flex min-w-0 flex-wrap items-center gap-3 border-y border-border/50 py-4">
                         <Label className="relative min-w-0 basis-full sm:flex-1 sm:basis-64 [&>svg]:pointer-events-none [&>svg]:absolute [&>svg]:top-2.5 [&>svg]:left-3 [&>svg]:text-muted-foreground">
                             <Search size={17} />
                             <Input
@@ -965,6 +965,13 @@ export default function Workspace({
                     {(view === 'Schreibtisch' || view === 'Wochencheck') && (
                         <>
                             {group(
+                                'Eingang / ohne Termin',
+                                displayed.filter(
+                                    (t) => t.status === 'open' && !t.due_on,
+                                ),
+                            )}
+
+                            {group(
                                 'Überfällig',
                                 displayed.filter(
                                     (t) =>
@@ -990,12 +997,7 @@ export default function Workspace({
                                         t.due_on > todayBerlin(),
                                 ),
                             )}
-                            {group(
-                                'Eingang / ohne Termin',
-                                displayed.filter(
-                                    (t) => t.status === 'open' && !t.due_on,
-                                ),
-                            )}
+
                             {group(
                                 'Erledigt',
                                 displayed.filter((t) => t.status === 'done'),

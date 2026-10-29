@@ -18,7 +18,7 @@ export default function AuthSimpleLayout({
                             className="flex flex-col items-center gap-2 font-medium"
                         >
                             <div className="mb-1 flex h-9 w-9 items-center justify-center rounded-md">
-                                <Snowflake className="size-9 text-green-800" />
+                                <Snowflake className="size-9 text-primary" />
                             </div>
                             <span className="sr-only">{title}</span>
                         </Link>

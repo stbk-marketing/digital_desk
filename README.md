@@ -1,6 +1,6 @@
 # Kühl Workspace
 
-Neues internes Laravel-/React-Projekt nach `../UMSETZUNG.md`, ohne Übernahme alter Daten oder Filament. Fünf Perspektiven: Schreibtisch, eigener Monats-/Wochenkalender, Projekte, grafischer Jahresplan mit A3-Druck/CSV und Wochencheck. Aufgaben brauchen nur einen Titel. Änderungen werden automatisch gespeichert und mit Account/Zeitpunkt nachvollziehbar protokolliert.
+Neues internes Laravel-/React-Projekt nach `../UMSETZUNG.md`, ohne Filament. Historische Daten können über den separaten, geprüften Altdatenimport übernommen werden; die normale Installation importiert keine Altdaten. Fünf Perspektiven: Schreibtisch, eigener Monats-/Wochenkalender, Projekte, grafischer Jahresplan mit A3-Druck/CSV und Wochencheck. Aufgaben brauchen nur einen Titel. Änderungen werden automatisch gespeichert und mit Account/Zeitpunkt nachvollziehbar protokolliert.
 
 Laravel 13 · React 19 · TypeScript · Inertia 3 · Fortify · Tailwind 4 · SQLite. Alle fachlichen Daten liegen auf dem eigenen Server. Kein KI-Dienst, Redis, Reverb, FullCalendar oder zusätzlicher Hostinganbieter erforderlich.
 
@@ -51,8 +51,11 @@ Die Browserprüfung nutzt installiertes Google Chrome, Port 8123 und ausschließ
 - [Architektur, Datenintegrität, Synchronisierung und spätere KI-Phase](docs/ARCHITEKTUR.md)
 - [Windows-/Linux-Installation, interner Firmenhost, SMTP, Backup/Restore und Rollback](docs/BETRIEB.md)
 - [Abnahmematrix und Testprotokoll](docs/TESTCHECKLISTE.md)
+- [Altdatenanalyse und Feldzuordnung](docs/ALTDATEN_ANALYSE.md)
+- [Altdatenmigration, Testergebnis und Serveranleitung](docs/ALTDATEN_MIGRATION.md)
 
 Fehlgeschlagene Änderungen bleiben sichtbar und lassen sich erneut senden. Entwürfe bleiben im Arbeitsspeicher des offenen Tabs; beim Verlassen mit ungespeicherten Änderungen warnt der Browser. Es gibt keine dauerhafte Offline-Speicherung sensibler Workspace-Inhalte. Geplante Projektzeiträume und protokollierte Bedienaktionen sind keine Nachweise geleisteter Arbeitszeit.
 
 Basis: [offizielles Laravel React Starter Kit](https://github.com/laravel/react-starter-kit), MIT-Lizenz.
+
 # digital_desk

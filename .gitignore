@@ -44,3 +44,16 @@ yarn-error.log
 /boost.json
 /opencode.json
 /opencode.jsonc
+/tools/legacy/__pycache__/
+*.sql
+*.sql.gz
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.db
+*.db-*
+*.xlsx
+*.xls
+*.bak
+*.backup
+/storage/app/private/

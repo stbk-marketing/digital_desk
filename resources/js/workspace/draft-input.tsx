@@ -77,7 +77,11 @@ export default function DraftInput({
         onBlur: flush,
     };
     return multiline ? (
-        <Textarea {...props} rows={5} />
+        <Textarea
+            {...props}
+            className={`resize-none ${className ?? ''}`}
+            rows={5}
+        />
     ) : (
         <Input {...props} type="text" />
     );

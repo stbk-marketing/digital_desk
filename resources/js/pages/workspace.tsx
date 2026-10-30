@@ -21,6 +21,14 @@ import {
     SheetTitle,
     SheetDescription,
 } from '@/components/ui/sheet';
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+    DialogFooter,
+} from '@/components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import WorkspaceNavigation from '@/workspace/navigation';
 import TaskSection from '@/workspace/task-section';
@@ -35,7 +43,10 @@ import {
     CheckCheck,
     ClipboardList,
     Folder,
-    History,
+    MoreHorizontal,
+    SlidersHorizontal,
+    UserRound,
+    X,
     Plus,
     Search,
     Trash2,
@@ -90,8 +101,8 @@ export default function Workspace({
         () =>
             (typeof window !== 'undefined'
                 ? views.find(
-                    (v) => v.name === localStorage.getItem('workspace-view'),
-                )?.name
+                      (v) => v.name === localStorage.getItem('workspace-view'),
+                  )?.name
                 : undefined) || 'Schreibtisch',
     );
     const [tasks, setTasks] = useState<Task[]>([]);
@@ -105,6 +116,10 @@ export default function Workspace({
     const [captureDate, setCaptureDate] = useState<string | null>(null);
     const [revision, setRevision] = useState(0);
     const [query, setQuery] = useState('');
+    const [searchOpen, setSearchOpen] = useState(false);
+    const [filtersOpen, setFiltersOpen] = useState(false);
+    const [capturePerson, setCapturePerson] = useState('');
+    const [captureProject, setCaptureProject] = useState<string | null>(null);
     const [status, setStatus] = useState('all');
     const [project, setProject] = useState('');
     const [person, setPerson] = useState('');
@@ -125,7 +140,11 @@ export default function Workspace({
         id: string;
         status: 'open' | 'done';
     } | null>(null);
-    const input = useRef<HTMLInputElement>(null);
+    const input = useRef<HTMLTextAreaElement>(null);
+    const searchInput = useRef<HTMLInputElement>(null);
+    const searchTrigger = useRef<HTMLButtonElement>(null);
+    const filterTrigger = useRef<HTMLButtonElement>(null);
+    const detailTrigger = useRef<HTMLElement | null>(null);
     const cursor = useRef(0);
     const loadSequence = useRef(0);
     const [check, setCheck] = useState('overdue');
@@ -183,7 +202,8 @@ export default function Workspace({
         }
     }, []);
     useEffect(() => {
-        const timer = setTimeout(() => void load(), 180);
+        ++loadSequence.current;
+        const timer = setTimeout(() => void load(), 300);
         return () => clearTimeout(timer);
     }, [load]);
     useEffect(() => {
@@ -191,6 +211,7 @@ export default function Workspace({
     }, [loadProjects]);
     useEffect(() => {
         let busy = false;
+        let cancelled = false;
         const poll = async (force = false) => {
             if (document.visibilityState !== 'visible' || busy) return;
             busy = true;
@@ -204,6 +225,7 @@ export default function Workspace({
                         more: boolean;
                         removed: { type: string; id: string }[];
                     }>(`changes?since=${cursor.current}`);
+                    if (cancelled) return;
                     for (const removed of result.removed ?? []) {
                         if (removed.type === 'task')
                             removedIds.current.add(removed.id);
@@ -221,9 +243,11 @@ export default function Workspace({
                 }
                 if (changed) {
                     await Promise.all([load(), loadProjects()]);
+                    if (cancelled) return;
                     setRevision((r) => r + 1);
                 }
             } catch {
+                if (cancelled) return;
                 setNotice(
                     'Offline / nicht synchronisiert. Lokale Entwürfe bleiben erhalten.',
                 );
@@ -237,6 +261,7 @@ export default function Workspace({
         window.addEventListener('online', refresh);
         document.addEventListener('visibilitychange', refresh);
         return () => {
+            cancelled = true;
             clearInterval(interval);
             window.removeEventListener('focus', refresh);
             window.removeEventListener('online', refresh);
@@ -255,7 +280,11 @@ export default function Workspace({
                 event.preventDefault();
                 input.current?.focus();
             }
-            if (event.key === 'Escape') setSelected(null);
+            if (
+                event.key === 'Escape' &&
+                !document.querySelector('[data-slot="dialog-content"]')
+            )
+                setSelected(null);
         };
         const leave = (event: BeforeUnloadEvent) => {
             if (Object.keys(draftRef.current).length) event.preventDefault();
@@ -361,7 +390,8 @@ export default function Workspace({
         void create(`local-${crypto.randomUUID()}`, {
             title: title.trim(),
             due_on,
-            project_id: project || null,
+            project_id: captureProject ?? (project || null),
+            assigned_to: capturePerson ? Number(capturePerson) : null,
         });
         setTitle('');
         input.current?.focus();
@@ -397,6 +427,7 @@ export default function Workspace({
     const name = (id: number | null) =>
         people.find((p) => p.id === id)?.name ?? '—';
     const openDetail = (id: string) => {
+        detailTrigger.current = document.activeElement as HTMLElement;
         setSelected(id);
         setActivities([]);
         setHistoryPage(1);
@@ -408,8 +439,8 @@ export default function Workspace({
         setTimeout(() => setUndo(null), 7000);
     };
     const refreshWorkspace = async () => {
-        await Promise.all([load(), loadProjects()]);
         setSelected(null);
+        await Promise.all([load(), loadProjects()]);
         setRevision((r) => r + 1);
     };
     const afterTaskDelete = async (id: string) => {
@@ -417,95 +448,77 @@ export default function Workspace({
         await refreshWorkspace();
     };
     const row = (t: Task) => (
-        <div
-            className={`task-row flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border/60 bg-background p-3 transition-[border-color,box-shadow] focus-within:border-ring focus-within:ring-1 focus-within:ring-ring/30 hover:border-border hover:shadow-xs ${t.status === 'done' ? 'is-done' : ''}`}
+        <article
+            className={`task-row ${t.status === 'done' ? 'is-done' : ''} ${selected === t.id ? 'is-selected' : ''}`}
+            style={
+                {
+                    '--task-color':
+                        projects.find((p) => p.id === t.project_id)?.color ||
+                        ['#e7b42a', '#e881a5', '#5a91d5', '#50ad83', '#b19bd6'][
+                            Array.from(t.id).reduce(
+                                (sum, c) => sum + c.charCodeAt(0),
+                                0,
+                            ) % 5
+                        ],
+                } as React.CSSProperties
+            }
             key={t.id}
         >
             <Checkbox
+                className="task-check"
                 aria-label={`${t.title}: ${t.status === 'done' ? 'wieder öffnen' : 'erledigen'}`}
                 checked={t.status === 'done'}
                 disabled={t.id.startsWith('local-')}
                 onCheckedChange={() => toggle(t)}
             />
-            <div className="task-title min-w-0 flex-1 basis-[calc(100%-3rem)] sm:basis-[14rem]">
+            <div className="task-card-body">
                 <DraftInput
+                    multiline
                     value={t.title}
                     label="Aufgabentitel"
-                    className={
-                        t.status === 'done'
-                            ? 'border-transparent bg-transparent font-medium text-muted-foreground line-through shadow-none hover:border-input focus-visible:border-ring'
-                            : 'border-transparent bg-transparent font-semibold shadow-none hover:border-input focus-visible:border-ring'
-                    }
+                    className="task-card-title"
                     disabled={t.id.startsWith('local-')}
                     onCommit={(title) => mutate(t, { title })}
                 />
-                <span className="task-sub mt-1 block truncate text-xs text-muted-foreground">
-                    {t.archived_at && 'Archiviert · '}
-                    {projects.find((p) => p.id === t.project_id)?.name}
-                </span>
-            </div>
-            <Input
-                className={
-                    t.due_on && t.due_on < todayBerlin() && t.status === 'open'
-                        ? 'w-[9rem] border-destructive/50 bg-background text-destructive shadow-none'
-                        : 'w-[9rem] border-input/60 bg-background shadow-none'
-                }
-                aria-label="Frist"
-                type="date"
-                value={t.due_on ?? ''}
-                onChange={(e) => mutate(t, { due_on: e.target.value || null })}
-                disabled={t.id.startsWith('local-')}
-            />
-            <NativeSelect
-                aria-label="Zuständig"
-                className="w-32 truncate border-input/60 bg-background shadow-none"
-                disabled={t.id.startsWith('local-')}
-                value={t.assigned_to ?? ''}
-                onChange={(e) =>
-                    mutate(t, {
-                        assigned_to: e.target.value
-                            ? Number(e.target.value)
-                            : null,
-                    })
-                }
-            >
-                <NativeSelectOption value="">Niemand</NativeSelectOption>
-                {t.assigned_to &&
-                    !members.some((p) => p.id === t.assigned_to) && (
-                        <NativeSelectOption value={t.assigned_to} disabled>
-                            {name(t.assigned_to)} (inaktiv)
-                        </NativeSelectOption>
+                {t.notes && <p className="task-preview">{t.notes}</p>}
+                {t.archived_at && (
+                    <span className="text-xs text-muted-foreground">
+                        Archiviert
+                    </span>
+                )}
+                <div className="task-meta">
+                    <span>
+                        <UserRound size={14} />
+                        {t.assigned_to ? name(t.assigned_to) : 'Niemand'}
+                    </span>
+                    <span className={t.project_id ? 'project-tag' : ''}>
+                        <Folder size={14} />
+                        {projects.find((p) => p.id === t.project_id)?.name ||
+                            'Ohne Projekt'}
+                    </span>
+                    {t.due_on && (
+                        <span
+                            className={`task-date ${t.due_on <= todayBerlin() && t.status === 'open' ? 'is-due' : ''}`}
+                        >
+                            <CalendarDays size={13} />
+                            {new Intl.DateTimeFormat('de-DE', {
+                                day: '2-digit',
+                                month: '2-digit',
+                                year: 'numeric',
+                            }).format(new Date(`${t.due_on}T12:00:00`))}
+                        </span>
                     )}
-                {members.map((p) => (
-                    <NativeSelectOption key={p.id} value={p.id}>
-                        {p.name}
-                    </NativeSelectOption>
-                ))}
-            </NativeSelect>
-            <NativeSelect
-                aria-label="Projekt zuordnen"
-                className="w-36 truncate border-input/60 bg-background shadow-none"
-                disabled={t.id.startsWith('local-')}
-                value={t.project_id ?? ''}
-                onChange={(e) =>
-                    mutate(t, { project_id: e.target.value || null })
-                }
-            >
-                <NativeSelectOption value="">Ohne Projekt</NativeSelectOption>
-                {projects.map((p) => (
-                    <NativeSelectOption key={p.id} value={p.id}>
-                        {p.name}
-                    </NativeSelectOption>
-                ))}
-            </NativeSelect>
+                </div>
+            </div>
             <Button
-                variant="outline"
+                variant="ghost"
                 size="icon"
+                className="task-detail-trigger"
                 aria-label={`Details: ${t.title}`}
                 disabled={t.id.startsWith('local-')}
                 onClick={() => openDetail(t.id)}
             >
-                <History size={17} />
+                <MoreHorizontal size={18} />
             </Button>
             {drafts[t.id] && (
                 <div
@@ -581,32 +594,30 @@ export default function Workspace({
                     )}
                 </div>
             )}
-            <RecordActions
-                type="task"
-                record={t}
-                disabled={t.id.startsWith('local-') || !!drafts[t.id]}
-                refresh={() => afterTaskDelete(t.id)}
-            />
-        </div>
+        </article>
     );
-    const group = (label: string, items: Task[], collapsed = false) => (
-        <TaskSection
-            key={label}
-            label={label}
-            count={items.length}
-            collapsed={collapsed}
-        >
-            {items.map(row)}
-            {!items.length && (
-                <p className="px-4 pb-4 text-sm text-muted-foreground">
-                    Hier ist alles aufgeräumt.
-                </p>
-            )}
-        </TaskSection>
-    );
+    const group = (label: string, items: Task[], collapsed = false) =>
+        label === 'Überfällig' && !items.length ? null : (
+            <TaskSection
+                key={label}
+                label={label}
+                count={items.length}
+                collapsed={collapsed}
+            >
+                {items.map(row)}
+                {!items.length && (
+                    <p className="px-4 pb-4 text-sm text-muted-foreground">
+                        Hier ist alles aufgeräumt.
+                    </p>
+                )}
+            </TaskSection>
+        );
 
     return (
-        <SidebarProvider className="workspace-shell">
+        <SidebarProvider
+            className={`workspace-shell ${task ? 'has-detail' : ''}`}
+            style={{ '--sidebar-width': '13.5rem' } as React.CSSProperties}
+        >
             <Head title={view} />
             <WorkspaceNavigation
                 view={view}
@@ -618,63 +629,266 @@ export default function Workspace({
                     setPage(1);
                 }}
             />
-            <SidebarInset className="min-w-0">
-                <div className="flex h-16 shrink-0 items-center gap-2 border-b border-sidebar-border/50 px-4 md:px-6">
-                    <SidebarTrigger aria-label="Navigation umschalten" />
-                    <Separator orientation="vertical" className="mr-2 h-4" />
-                    <span className="text-sm text-muted-foreground">
-                        {view}
-                    </span>
-                </div>
-                <main className="workspace-main flex min-w-0 flex-1 flex-col gap-6 p-4 md:p-6">
-                    <header className="flex flex-wrap items-start justify-between gap-4">
-                        <div>
-                            <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-                                {view}
-                            </h1>
-                            <p className="mt-1 text-sm text-muted-foreground">
+            <SidebarInset className="workspace-surface min-w-0">
+                <main className="workspace-main flex min-w-0 flex-1 flex-col gap-5">
+                    <header className="workspace-header">
+                        <div className="workspace-heading">
+                            <div className="workspace-greeting">
+                                <SidebarTrigger aria-label="Navigation umschalten" />
+                                <span>
+                                    Guten{' '}
+                                    {new Date().getHours() < 11
+                                        ? 'Morgen'
+                                        : new Date().getHours() < 18
+                                          ? 'Tag'
+                                          : 'Abend'}
+                                    , {auth.user.name.split(' ')[0]}
+                                </span>
+                            </div>
+                            <h1>{view}</h1>
+                            <p>
                                 {view === 'Schreibtisch'
                                     ? 'Gedanken festhalten. Gemeinsam Dinge erledigen.'
                                     : 'Alles im Blick, Schritt für Schritt.'}
                             </p>
                         </div>
-                        <span className="text-sm text-muted-foreground">
-                            {new Intl.DateTimeFormat('de-DE', {
-                                dateStyle: 'full',
-                                timeZone: 'Europe/Berlin',
-                            }).format(new Date())}
-                        </span>
+                        <div className="workspace-header-tools">
+                            <time dateTime={todayBerlin()}>
+                                {new Intl.DateTimeFormat('de-DE', {
+                                    dateStyle: 'full',
+                                    timeZone: 'Europe/Berlin',
+                                }).format(new Date())}
+                            </time>
+                            <div className="workspace-actions">
+                                <Button
+                                    variant="outline"
+                                    size="icon"
+                                    className="header-tool"
+                                    aria-label="Suche öffnen"
+                                    ref={searchTrigger}
+                                    title="Aufgaben durchsuchen"
+                                    onClick={() => setSearchOpen(true)}
+                                >
+                                    <Search />
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="icon"
+                                    className="header-tool"
+                                    aria-label="Filter öffnen"
+                                    ref={filterTrigger}
+                                    title="Aufgaben filtern"
+                                    onClick={() => setFiltersOpen(true)}
+                                >
+                                    <SlidersHorizontal />
+                                    {(status !== 'all' ||
+                                        project ||
+                                        person ||
+                                        archive !== 'current') && (
+                                        <span className="filter-dot" />
+                                    )}
+                                </Button>
+                            </div>
+                        </div>
                     </header>
                     <form
-                        className="quick-capture sticky top-0 z-20 flex items-center gap-3 rounded-xl border border-primary/50 bg-card p-4 text-card-foreground shadow-md focus-within:border-primary focus-within:ring-2 focus-within:ring-ring/20"
+                        noValidate
+                        className="quick-capture"
                         onSubmit={(e) => {
                             e.preventDefault();
                             quickCreate();
                         }}
                     >
-                        <Plus size={23} className="shrink-0 text-primary" />
-                        <Input
-                            ref={input}
-                            className="min-w-0 flex-1 bg-background"
-                            aria-label="Neue Aufgabe"
-                            placeholder="Was gibt es zu tun? Einfach schreiben …"
-                            maxLength={500}
-                            value={title}
-                            onChange={(e) => setTitle(e.target.value)}
-                        />
-                        <kbd className="hidden rounded border bg-muted px-1.5 py-0.5 text-xs text-muted-foreground sm:inline-block">
-                            Enter ↵
-                        </kbd>
-                        <Button type="submit" aria-label="Aufgabe hinzufügen">
-                            Hinzufügen
-                        </Button>
+                        <span className="capture-plus">
+                            <Plus size={25} />
+                        </span>
+                        <div className="capture-body">
+                            <Textarea
+                                className="resize-none"
+                                ref={input}
+                                aria-label="Neue Aufgabe"
+                                aria-describedby="capture-hint"
+                                placeholder="Was gibt es zu tun?"
+                                maxLength={500}
+                                rows={2}
+                                value={title}
+                                onChange={(e) => setTitle(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (
+                                        e.key === 'Enter' &&
+                                        !e.shiftKey &&
+                                        !e.nativeEvent.isComposing
+                                    ) {
+                                        e.preventDefault();
+                                        quickCreate();
+                                    }
+                                }}
+                            />
+                            <p id="capture-hint">
+                                Einfach schreiben und mit Enter speichern …
+                            </p>
+                            <div className="capture-toolbar">
+                                <div className="capture-options">
+                                    <Label
+                                        className={`capture-option ${captureDate ? 'has-value' : ''}`}
+                                    >
+                                        <CalendarDays size={15} />
+                                        <span>
+                                            {captureDate
+                                                ? new Intl.DateTimeFormat(
+                                                      'de-DE',
+                                                  ).format(
+                                                      new Date(
+                                                          `${captureDate}T12:00:00`,
+                                                      ),
+                                                  )
+                                                : 'Termin'}
+                                        </span>
+                                        <Input
+                                            aria-label="Termin für neue Aufgabe"
+                                            type="date"
+                                            value={captureDate ?? ''}
+                                            onChange={(e) =>
+                                                setCaptureDate(
+                                                    e.target.value || null,
+                                                )
+                                            }
+                                        />
+                                    </Label>
+                                    <Label
+                                        className={`capture-option ${capturePerson ? 'has-value' : ''}`}
+                                    >
+                                        <UserRound size={15} />
+                                        <span>
+                                            {capturePerson
+                                                ? name(Number(capturePerson))
+                                                : 'Person'}
+                                        </span>
+                                        <NativeSelect
+                                            aria-label="Person für neue Aufgabe"
+                                            value={capturePerson}
+                                            onChange={(e) =>
+                                                setCapturePerson(e.target.value)
+                                            }
+                                        >
+                                            <NativeSelectOption value="">
+                                                Niemand
+                                            </NativeSelectOption>
+                                            {members.map((p) => (
+                                                <NativeSelectOption
+                                                    key={p.id}
+                                                    value={p.id}
+                                                >
+                                                    {p.name}
+                                                </NativeSelectOption>
+                                            ))}
+                                        </NativeSelect>
+                                    </Label>
+                                    <Label
+                                        className={`capture-option ${(captureProject ?? project) ? 'has-value' : ''}`}
+                                    >
+                                        <Folder size={15} />
+                                        <span>
+                                            {projects.find(
+                                                (p) =>
+                                                    p.id ===
+                                                    (captureProject ?? project),
+                                            )?.name || 'Projekt'}
+                                        </span>
+                                        <NativeSelect
+                                            aria-label="Projekt für neue Aufgabe"
+                                            value={captureProject ?? project}
+                                            onChange={(e) =>
+                                                setCaptureProject(
+                                                    e.target.value,
+                                                )
+                                            }
+                                        >
+                                            <NativeSelectOption value="">
+                                                Ohne Projekt
+                                            </NativeSelectOption>
+                                            {projects.map((p) => (
+                                                <NativeSelectOption
+                                                    key={p.id}
+                                                    value={p.id}
+                                                >
+                                                    {p.name}
+                                                </NativeSelectOption>
+                                            ))}
+                                        </NativeSelect>
+                                    </Label>
+                                </div>
+                                <Button
+                                    type="submit"
+                                    aria-label="Aufgabe hinzufügen"
+                                >
+                                    Hinzufügen
+                                </Button>
+                                <kbd>Enter ↵</kbd>
+                            </div>
+                        </div>
                     </form>
-                    <div className="filter-bar flex min-w-0 flex-wrap items-center gap-3 border-y border-border/50 py-4">
-                        <Label className="relative min-w-0 basis-full sm:flex-1 sm:basis-64 [&>svg]:pointer-events-none [&>svg]:absolute [&>svg]:top-2.5 [&>svg]:left-3 [&>svg]:text-muted-foreground">
-                            <Search size={17} />
+                    {(query ||
+                        status !== 'all' ||
+                        project ||
+                        person ||
+                        archive !== 'current') && (
+                        <div
+                            className="active-filters"
+                            aria-label="Aktive Suche und Filter"
+                        >
+                            <span>
+                                {query
+                                    ? `Suche: „${query}“`
+                                    : 'Gefilterte Ansicht'}
+                                {project
+                                    ? ` · ${projects.find((p) => p.id === project)?.name ?? 'Projekt'}`
+                                    : ''}
+                                {person ? ` · ${name(Number(person))}` : ''}
+                                {status !== 'all'
+                                    ? ` · ${{ open: 'Offen', done: 'Erledigt', overdue: 'Überfällig' }[status]}`
+                                    : ''}
+                                {archive !== 'current'
+                                    ? ` · ${archive === 'all' ? 'inkl. Archiv' : 'Archiv'}`
+                                    : ''}
+                            </span>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                    setQuery('');
+                                    setStatus('all');
+                                    setProject('');
+                                    setPerson('');
+                                    setArchive('current');
+                                    setPage(1);
+                                }}
+                            >
+                                <X size={14} />
+                                Zurücksetzen
+                            </Button>
+                        </div>
+                    )}
+                    <Dialog open={searchOpen} onOpenChange={setSearchOpen}>
+                        <DialogContent
+                            className="workspace-overlay workspace-search"
+                            onCloseAutoFocus={(event) => {
+                                event.preventDefault();
+                                searchTrigger.current?.focus();
+                            }}
+                        >
+                            <DialogHeader>
+                                <DialogTitle>Aufgaben durchsuchen</DialogTitle>
+                                <DialogDescription>
+                                    Suche in Titeln, Notizen und Projekten –
+                                    auch in erledigten und archivierten
+                                    Aufgaben.
+                                </DialogDescription>
+                            </DialogHeader>
                             <Input
+                                ref={searchInput}
                                 aria-label="Alle Aufgaben durchsuchen"
-                                className="pl-9"
+                                className="h-12 text-base"
                                 placeholder="Suchen, auch in erledigten Aufgaben …"
                                 value={query}
                                 onChange={(e) => {
@@ -684,96 +898,168 @@ export default function Workspace({
                                     setPage(1);
                                 }}
                             />
-                        </Label>
-                        <NativeSelect
-                            aria-label="Statusfilter"
-                            className="max-w-[min(11rem,42vw)] truncate"
-                            value={status}
-                            onChange={(e) => {
-                                setStatus(e.target.value);
-                                setPage(1);
-                            }}
-                        >
-                            <NativeSelectOption value="all">
-                                Alle Status
-                            </NativeSelectOption>
-                            <NativeSelectOption value="open">
-                                Offen
-                            </NativeSelectOption>
-                            <NativeSelectOption value="done">
-                                Erledigt
-                            </NativeSelectOption>
-                            <NativeSelectOption value="overdue">
-                                Überfällig
-                            </NativeSelectOption>
-                        </NativeSelect>
-                        <NativeSelect
-                            aria-label="Projektfilter"
-                            className="max-w-[min(11rem,42vw)] truncate"
-                            value={project}
-                            onChange={(e) => {
-                                setProject(e.target.value);
-                                setPage(1);
-                            }}
-                        >
-                            <NativeSelectOption value="">
-                                Alle Projekte
-                            </NativeSelectOption>
-                            {projects.map((p) => (
-                                <NativeSelectOption value={p.id} key={p.id}>
-                                    {p.name}
-                                </NativeSelectOption>
-                            ))}
-                        </NativeSelect>
-                        <NativeSelect
-                            aria-label="Personenfilter"
-                            className="max-w-[min(11rem,42vw)] truncate"
-                            value={person}
-                            onChange={(e) => {
-                                setPerson(e.target.value);
-                                setPage(1);
-                            }}
-                        >
-                            <NativeSelectOption value="">
-                                Alle Personen
-                            </NativeSelectOption>
-                            {members.map((p) => (
-                                <NativeSelectOption key={p.id} value={p.id}>
-                                    {p.name}
-                                </NativeSelectOption>
-                            ))}
-                        </NativeSelect>
-                        <NativeSelect
-                            aria-label="Archivfilter"
-                            className="max-w-[min(11rem,42vw)] truncate"
-                            value={archive}
-                            onChange={(e) => {
-                                setArchive(e.target.value);
-                                setPage(1);
-                            }}
-                        >
-                            <NativeSelectOption value="current">
-                                Aktueller Schreibtisch
-                            </NativeSelectOption>
-                            <NativeSelectOption value="all">
-                                Alle inkl. Archiv
-                            </NativeSelectOption>
-                            <NativeSelectOption value="archived">
-                                Archiv
-                            </NativeSelectOption>
-                        </NativeSelect>
-                    </div>
-                    {captureDate && (
-                        <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                            Neue Aufgabe am {captureDate}{' '}
-                            <Button
-                                variant="outline"
-                                onClick={() => setCaptureDate(null)}
+
+                            {query && (
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="justify-self-start"
+                                    onClick={() => {
+                                        setQuery('');
+                                        setPage(1);
+                                        searchInput.current?.focus();
+                                    }}
+                                >
+                                    <X size={14} />
+                                    Suchbegriff löschen
+                                </Button>
+                            )}
+                            <p
+                                className="text-sm text-muted-foreground"
+                                role="status"
                             >
-                                Datum entfernen ×
-                            </Button>
-                        </p>
-                    )}
+                                {query
+                                    ? `${pagination.total} Aufgaben gefunden`
+                                    : 'Gib einen Suchbegriff ein.'}
+                            </p>
+                            <DialogFooter>
+                                <Button onClick={() => setSearchOpen(false)}>
+                                    Ergebnisse anzeigen
+                                </Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+                    <Dialog open={filtersOpen} onOpenChange={setFiltersOpen}>
+                        <DialogContent
+                            className="workspace-overlay workspace-filters"
+                            onCloseAutoFocus={(event) => {
+                                event.preventDefault();
+                                filterTrigger.current?.focus();
+                            }}
+                        >
+                            <DialogHeader>
+                                <DialogTitle>Aufgaben filtern</DialogTitle>
+                                <DialogDescription>
+                                    Grenze deine Ansicht nach Status, Projekt,
+                                    Person oder Archiv ein.
+                                </DialogDescription>
+                            </DialogHeader>
+                            <div className="filter-fields">
+                                <Label className="grid gap-2">
+                                    Status
+                                    <NativeSelect
+                                        aria-label="Statusfilter"
+                                        className="w-full"
+                                        value={status}
+                                        onChange={(e) => {
+                                            setStatus(e.target.value);
+                                            setPage(1);
+                                        }}
+                                    >
+                                        <NativeSelectOption value="all">
+                                            Alle Status
+                                        </NativeSelectOption>
+                                        <NativeSelectOption value="open">
+                                            Offen
+                                        </NativeSelectOption>
+                                        <NativeSelectOption value="done">
+                                            Erledigt
+                                        </NativeSelectOption>
+                                        <NativeSelectOption value="overdue">
+                                            Überfällig
+                                        </NativeSelectOption>
+                                    </NativeSelect>
+                                </Label>
+                                <Label className="grid gap-2">
+                                    Projekt
+                                    <NativeSelect
+                                        aria-label="Projektfilter"
+                                        className="w-full"
+                                        value={project}
+                                        onChange={(e) => {
+                                            setProject(e.target.value);
+                                            setPage(1);
+                                        }}
+                                    >
+                                        <NativeSelectOption value="">
+                                            Alle Projekte
+                                        </NativeSelectOption>
+                                        {projects.map((p) => (
+                                            <NativeSelectOption
+                                                value={p.id}
+                                                key={p.id}
+                                            >
+                                                {p.name}
+                                            </NativeSelectOption>
+                                        ))}
+                                    </NativeSelect>
+                                </Label>
+                                <Label className="grid gap-2">
+                                    Person
+                                    <NativeSelect
+                                        aria-label="Personenfilter"
+                                        className="w-full"
+                                        value={person}
+                                        onChange={(e) => {
+                                            setPerson(e.target.value);
+                                            setPage(1);
+                                        }}
+                                    >
+                                        <NativeSelectOption value="">
+                                            Alle Personen
+                                        </NativeSelectOption>
+                                        {members.map((p) => (
+                                            <NativeSelectOption
+                                                key={p.id}
+                                                value={p.id}
+                                            >
+                                                {p.name}
+                                            </NativeSelectOption>
+                                        ))}
+                                    </NativeSelect>
+                                </Label>
+                                <Label className="grid gap-2">
+                                    Archiv
+                                    <NativeSelect
+                                        aria-label="Archivfilter"
+                                        className="w-full"
+                                        value={archive}
+                                        onChange={(e) => {
+                                            setArchive(e.target.value);
+                                            setPage(1);
+                                        }}
+                                    >
+                                        <NativeSelectOption value="current">
+                                            Aktueller Schreibtisch
+                                        </NativeSelectOption>
+                                        <NativeSelectOption value="all">
+                                            Alle inkl. Archiv
+                                        </NativeSelectOption>
+                                        <NativeSelectOption value="archived">
+                                            Archiv
+                                        </NativeSelectOption>
+                                    </NativeSelect>
+                                </Label>
+                            </div>
+                            <DialogFooter>
+                                <Button
+                                    variant="outline"
+                                    onClick={() => {
+                                        setStatus('all');
+                                        setProject('');
+                                        setPerson('');
+                                        setArchive('current');
+                                        setPage(1);
+                                    }}
+                                >
+                                    Filter zurücksetzen
+                                </Button>
+                                <Button onClick={() => setFiltersOpen(false)}>
+                                    Ergebnisse anzeigen
+                                </Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
                     {notice && (
                         <Alert variant="destructive">
                             <AlertDescription className="flex flex-wrap items-center gap-2">
@@ -803,13 +1089,14 @@ export default function Workspace({
                                         den Entwurf verwerfen.
                                     </p>
                                     <Textarea
+                                        className="resize-none"
                                         aria-label="Erhaltener lokaler Entwurf"
                                         readOnly
                                         value={[
                                             draft.data.title ??
-                                            draft.base?.title,
+                                                draft.base?.title,
                                             draft.data.notes ??
-                                            draft.base?.notes,
+                                                draft.base?.notes,
                                             ...Object.entries(draft.data)
                                                 .filter(
                                                     ([key]) =>
@@ -1002,8 +1289,8 @@ export default function Workspace({
                                 'Erledigt',
                                 displayed.filter((t) => t.status === 'done'),
                                 !query &&
-                                status !== 'done' &&
-                                check !== 'recent',
+                                    status !== 'done' &&
+                                    check !== 'recent',
                             )}
                             <div className="flex flex-wrap items-center justify-end gap-2 text-sm text-muted-foreground [&>span]:mr-auto">
                                 <span>
@@ -1062,8 +1349,14 @@ export default function Workspace({
                     }}
                 >
                     <SheetContent
-                        className="w-full overflow-y-auto p-0 sm:max-w-md"
+                        className="workspace-overlay workspace-detail w-full overflow-y-auto p-0 sm:max-w-md"
+                        onInteractOutside={(event) => event.preventDefault()}
                         onOpenAutoFocus={(event) => event.preventDefault()}
+                        onCloseAutoFocus={(event) => {
+                            event.preventDefault();
+                            if (detailTrigger.current?.isConnected)
+                                detailTrigger.current.focus();
+                        }}
                     >
                         <SheetHeader className="border-b p-6">
                             <SheetTitle>Aufgabendetails</SheetTitle>
@@ -1075,22 +1368,56 @@ export default function Workspace({
                             className="detail-panel space-y-6 p-6"
                             aria-label="Aufgabendetails"
                         >
-                            <RecordActions
-                                type="task"
-                                record={task}
-                                disabled={!!drafts[task.id]}
-                                refresh={() => afterTaskDelete(task.id)}
-                            />
-                            <Button
-                                variant="outline"
-                                className="close"
-                                onClick={() => setSelected(null)}
-                            >
-                                Schließen ×
-                            </Button>
-                            <p className="text-xs font-medium text-muted-foreground">
-                                AUFGABENDETAILS
-                            </p>
+                            <Label className="grid gap-2">
+                                Titel
+                                <DraftInput
+                                    multiline
+                                    value={task.title}
+                                    label="Titel im Detail"
+                                    className="detail-title"
+                                    onCommit={(title) =>
+                                        mutate(task, { title })
+                                    }
+                                />
+                            </Label>
+                            <Label className="grid gap-2">
+                                Person
+                                <NativeSelect
+                                    aria-label="Zuständig"
+                                    value={task.assigned_to ?? ''}
+                                    onChange={(e) =>
+                                        mutate(task, {
+                                            assigned_to: e.target.value
+                                                ? Number(e.target.value)
+                                                : null,
+                                        })
+                                    }
+                                >
+                                    <NativeSelectOption value="">
+                                        Niemand
+                                    </NativeSelectOption>
+                                    {task.assigned_to &&
+                                        !members.some(
+                                            (p) => p.id === task.assigned_to,
+                                        ) && (
+                                            <NativeSelectOption
+                                                value={task.assigned_to}
+                                                disabled
+                                            >
+                                                {name(task.assigned_to)}{' '}
+                                                (inaktiv)
+                                            </NativeSelectOption>
+                                        )}
+                                    {members.map((p) => (
+                                        <NativeSelectOption
+                                            key={p.id}
+                                            value={p.id}
+                                        >
+                                            {p.name}
+                                        </NativeSelectOption>
+                                    ))}
+                                </NativeSelect>
+                            </Label>
                             <Label className="grid gap-2">
                                 Frist
                                 <Input
@@ -1103,14 +1430,10 @@ export default function Workspace({
                                     }
                                 />
                             </Label>
-                            <DraftInput
-                                value={task.title}
-                                label="Titel im Detail"
-                                onCommit={(title) => mutate(task, { title })}
-                            />
                             <Label className="grid gap-2">
                                 Projekt
                                 <NativeSelect
+                                    aria-label="Projekt"
                                     value={task.project_id ?? ''}
                                     onChange={(e) =>
                                         mutate(task, {
@@ -1156,31 +1479,57 @@ export default function Workspace({
                                     }
                                 />
                             </Label>
-                            <p>
-                                Angelegt von{' '}
-                                <strong>{name(task.created_by)}</strong>
-                            </p>
-                            <p>
-                                Zugewiesen an{' '}
-                                <strong>{name(task.assigned_to)}</strong>
-                            </p>
-                            <p>
-                                Erledigt markiert von{' '}
-                                <strong>{name(task.completed_by)}</strong>
-                            </p>
-                            <Button
-                                variant="outline"
-                                onClick={() =>
-                                    mutate(task, {
-                                        archived: !task.archived_at,
-                                    } as Partial<Task>)
-                                }
-                            >
-                                <Archive size={16} />{' '}
-                                {task.archived_at
-                                    ? 'Wiederherstellen'
-                                    : 'Archivieren'}
-                            </Button>
+                            <Separator />
+                            <div className="detail-provenance">
+                                <p>
+                                    Angelegt von{' '}
+                                    <strong>{name(task.created_by)}</strong>
+                                </p>
+                                <p>
+                                    Erstellt am{' '}
+                                    {new Intl.DateTimeFormat('de-DE', {
+                                        dateStyle: 'medium',
+                                        timeStyle: 'short',
+                                        timeZone: 'Europe/Berlin',
+                                    }).format(new Date(task.created_at))}
+                                </p>
+                                {task.completed_by && (
+                                    <p>
+                                        Erledigt markiert von{' '}
+                                        <strong>
+                                            {name(task.completed_by)}
+                                        </strong>
+                                    </p>
+                                )}
+                            </div>
+                            <div className="detail-actions">
+                                <Button
+                                    variant="outline"
+                                    onClick={() =>
+                                        mutate(task, {
+                                            archived: !task.archived_at,
+                                        } as Partial<Task>)
+                                    }
+                                >
+                                    <Archive size={16} />{' '}
+                                    {task.archived_at
+                                        ? 'Wiederherstellen'
+                                        : 'Archivieren'}
+                                </Button>
+                                <RecordActions
+                                    type="task"
+                                    record={task}
+                                    disabled={!!drafts[task.id]}
+                                    refresh={() => afterTaskDelete(task.id)}
+                                />
+                                <Button
+                                    variant="outline"
+                                    className="close"
+                                    onClick={() => setSelected(null)}
+                                >
+                                    Schließen ×
+                                </Button>
+                            </div>
                             <Separator />
                             <h2 className="text-base font-semibold">Verlauf</h2>
                             <p className="text-sm text-muted-foreground">

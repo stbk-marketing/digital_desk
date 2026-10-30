@@ -40,7 +40,7 @@ test('project action menu remains reachable after returning from a long task lis
     await page.getByLabel('Neue Aufgabe', { exact: true }).press('Enter');
     await expect(
         page.locator(
-            'input[aria-label=Aufgabentitel][value="Menü Layoutprüfung Aufgabe"]',
+            'textarea[aria-label=Aufgabentitel]:text-is("Menü Layoutprüfung Aufgabe")',
         ),
     ).toBeVisible();
     await page.getByRole('button', { name: 'Projekte', exact: true }).click();

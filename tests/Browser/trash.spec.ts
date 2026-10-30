@@ -18,19 +18,21 @@ async function navigate(page: Page, view: string) {
     ).toBeVisible();
 }
 
-async function removeTask(page: Page, title: string, details = false) {
-    if (details)
-        await page
-            .getByRole('button', { name: `Details: ${title}`, exact: true })
-            .click();
-    await (details ? page.locator('[data-slot=sheet-content]') : page)
+async function removeTask(page: Page, title: string) {
+    await page
+        .getByRole('button', { name: `Details: ${title}`, exact: true })
+        .click();
+    await page
+        .locator('[data-slot=sheet-content]')
         .getByRole('button', { name: `Aktionen: ${title}`, exact: true })
         .click();
     await page.getByRole('menuitem', { name: 'Löschen', exact: true }).click();
     await expect(
-        page
-            .locator('.task-row')
-            .filter({ has: page.locator(`input[value="${title}"]`) }),
+        page.locator('.task-row').filter({
+            has: page.locator(
+                `input[value="${title}"], textarea[aria-label="Aufgabentitel"]:text-is("${title}")`,
+            ),
+        }),
     ).toHaveCount(0);
 }
 
@@ -47,15 +49,21 @@ test('task trash, undo, restore, purge confirmation and team synchronization', a
         const title = 'Papierkorb Aufgabe vertraulich';
         await page.getByLabel('Neue Aufgabe', { exact: true }).fill(title);
         await page.getByLabel('Neue Aufgabe', { exact: true }).press('Enter');
-        const otherRow = colleague
-            .locator('.task-row')
-            .filter({ has: colleague.locator(`input[value="${title}"]`) });
+        const otherRow = colleague.locator('.task-row').filter({
+            has: colleague.locator(
+                `input[value="${title}"], textarea[aria-label="Aufgabentitel"]:text-is("${title}")`,
+            ),
+        });
         await expect(otherRow).toBeVisible({ timeout: 20000 });
         await removeTask(page, title);
         await page
             .getByRole('button', { name: 'Rückgängig', exact: true })
             .click();
-        await expect(page.locator(`input[value="${title}"]`)).toBeVisible();
+        await expect(
+            page.locator(
+                `input[value="${title}"], textarea[aria-label="Aufgabentitel"]:text-is("${title}")`,
+            ),
+        ).toBeVisible();
         await expect(otherRow).toBeVisible({ timeout: 20000 });
         await removeTask(page, title);
         await expect(otherRow).toHaveCount(0, { timeout: 20000 });
@@ -100,7 +108,7 @@ test('task trash, undo, restore, purge confirmation and team synchronization', a
         await expect(entry).toHaveCount(0);
         await expect(otherRow).toBeVisible({ timeout: 20000 });
         await navigate(page, 'Schreibtisch');
-        await removeTask(page, title, true);
+        await removeTask(page, title);
         await navigate(page, 'Papierkorb');
         await entry
             .getByRole('button', { name: 'Endgültig löschen', exact: true })
@@ -144,11 +152,17 @@ test('project trash detaches tasks, restores safe links and purges without delet
     const title = 'Aufgabe bleibt erhalten';
     await page.getByLabel('Neue Aufgabe', { exact: true }).fill(title);
     await page.getByLabel('Neue Aufgabe', { exact: true }).press('Enter');
-    const row = page
-        .locator('.task-row')
-        .filter({ has: page.locator(`input[value="${title}"]`) });
+    const row = page.locator('.task-row').filter({
+        has: page.locator(
+            `input[value="${title}"], textarea[aria-label="Aufgabentitel"]:text-is("${title}")`,
+        ),
+    });
     await expect(row).toBeVisible();
-    const projectId = await row.getByLabel('Projekt zuordnen').inputValue();
+    await row.getByRole('button', { name: `Details: ${title}` }).click();
+    const projectId = await page
+        .getByLabel('Projekt', { exact: true })
+        .inputValue();
+    await page.getByRole('button', { name: 'Schließen', exact: true }).click();
     await navigate(page, 'Projekte');
     await card.getByRole('button', { name: `Aktionen: ${name}` }).click();
     await page.getByRole('menuitem', { name: 'Löschen', exact: true }).click();
@@ -160,7 +174,7 @@ test('project trash detaches tasks, restores safe links and purges without delet
         .click();
     await expect(card).toHaveCount(0);
     await navigate(page, 'Schreibtisch');
-    await expect(row.getByLabel('Projekt zuordnen')).toHaveValue('');
+    await expect(row.getByText('Ohne Projekt', { exact: true })).toBeVisible();
     await navigate(page, 'Papierkorb');
     const entry = page.locator('.trash-record').filter({ hasText: name });
     await entry.getByRole('button', { name: 'Frühere Zuordnungen' }).click();
@@ -173,7 +187,8 @@ test('project trash detaches tasks, restores safe links and purges without delet
         .getByRole('button', { name: 'Jetzt wiederherstellen', exact: true })
         .click();
     await navigate(page, 'Schreibtisch');
-    await expect(row.getByLabel('Projekt zuordnen')).toHaveValue(projectId);
+    await expect(row.getByText(name, { exact: true })).toBeVisible();
+    expect(projectId).toBeTruthy();
     await navigate(page, 'Projekte');
     await card.getByRole('button', { name: `Aktionen: ${name}` }).click();
     await page.getByRole('menuitem', { name: 'Löschen', exact: true }).click();
@@ -189,7 +204,7 @@ test('project trash detaches tasks, restores safe links and purges without delet
         .click();
     await expect(entry).toHaveCount(0);
     await navigate(page, 'Schreibtisch');
-    await expect(row.getByLabel('Projekt zuordnen')).toHaveValue('');
+    await expect(row.getByText('Ohne Projekt', { exact: true })).toBeVisible();
 });
 
 test('team deletion hides a conflicting local draft without discarding its text', async ({
@@ -205,7 +220,7 @@ test('team deletion hides a conflicting local draft without discarding its text'
         await page.getByLabel('Neue Aufgabe', { exact: true }).fill(title);
         await page.getByLabel('Neue Aufgabe', { exact: true }).press('Enter');
         const input = colleague.locator(
-            `input[aria-label="Aufgabentitel"][value="${title}"]`,
+            `textarea[aria-label="Aufgabentitel"]:text-is("${title}")`,
         );
         await expect(input).toBeVisible({ timeout: 20000 });
         await colleague.route('**/api/workspace/tasks/*', (route) =>
@@ -224,7 +239,7 @@ test('team deletion hides a conflicting local draft without discarding its text'
         ).toHaveValue('Mein erhaltener Text', { timeout: 20000 });
         await expect(
             colleague.locator(
-                'input[aria-label="Aufgabentitel"][value="Mein erhaltener Text"]',
+                'textarea[aria-label="Aufgabentitel"]:text-is("Mein erhaltener Text")',
             ),
         ).toHaveCount(0);
         await colleague
@@ -247,9 +262,11 @@ test('project deletion preserves a colleague’s unsent project draft outside th
     const title = 'Parallel gelöschtes Projekt';
     await page.getByLabel('Neues Projekt', { exact: true }).fill(title);
     await page.getByLabel('Neues Projekt', { exact: true }).press('Enter');
-    const card = page
-        .locator('.project-card')
-        .filter({ has: page.locator(`input[value="${title}"]`) });
+    const card = page.locator('.project-card').filter({
+        has: page.locator(
+            `input[value="${title}"], textarea[aria-label="Aufgabentitel"]:text-is("${title}")`,
+        ),
+    });
     await expect(card).toBeVisible();
     const context = await browser.newContext();
     const colleague = await context.newPage();

@@ -7,7 +7,7 @@ import {
     LogOut,
     Settings,
     Trash2,
-    BookHeart,
+    Leaf,
 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
@@ -46,20 +46,24 @@ export default function WorkspaceNavigation({
 }) {
     const { setOpenMobile } = useSidebar();
     return (
-        <Sidebar collapsible="icon" variant="inset">
+        <Sidebar
+            collapsible="icon"
+            variant="sidebar"
+            className="workspace-navigation"
+        >
             <SidebarHeader>
                 <SidebarMenu>
                     <SidebarMenuItem>
                         <SidebarMenuButton size="lg" asChild>
                             <a href="/workspace">
                                 <div className="flex aspect-square size-8 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground">
-                                    <BookHeart className="size-4" />
+                                    <Leaf className="size-5" />
                                 </div>
                                 <div className="grid flex-1 text-left text-sm leading-tight">
                                     <span className="truncate font-semibold">
                                         Workspace
                                     </span>
-                                    <span className="truncate text-xs text-muted-foreground">
+                                    <span className="truncate text-xs text-sidebar-foreground/75">
                                         Stadtbäckerei Kühl
                                     </span>
                                 </div>
@@ -70,7 +74,9 @@ export default function WorkspaceNavigation({
             </SidebarHeader>
             <SidebarContent>
                 <SidebarGroup>
-                    <SidebarGroupLabel>Workspace</SidebarGroupLabel>
+                    <SidebarGroupLabel className="sr-only">
+                        Workspace
+                    </SidebarGroupLabel>
                     <SidebarMenu>
                         {items.map((item) => (
                             <SidebarMenuItem key={item.name}>
@@ -128,7 +134,7 @@ export default function WorkspaceNavigation({
                                     <span className="truncate font-medium">
                                         {user.name}
                                     </span>
-                                    <span className="truncate text-xs text-muted-foreground">
+                                    <span className="truncate text-xs text-sidebar-foreground/75">
                                         Gemeinsamer Workspace
                                     </span>
                                 </div>

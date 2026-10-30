@@ -1,0 +1,30 @@
+{
+    "profile": "product-admin",
+    "sourceRoots": [
+        "resources/js/workspace",
+        "resources/js/pages",
+        "resources/css"
+    ],
+    "locale": "de-DE",
+    "canonicalMap": "UX-CONTRACT.md",
+    "requiredCapabilities": [
+        "Select/Listbox",
+        "Date",
+        "Form",
+        "Scrollbar",
+        "Toast",
+        "CRUD"
+    ],
+    "ownership": { "Select/Listbox": "native", "Date": "native" },
+    "requiredCommands": ["types", "lint", "build", "browser"],
+    "commands": {
+        "types": "npm.cmd run types:check",
+        "lint": "npm.cmd run lint",
+        "build": "npm.cmd run build",
+        "browser": "npm.cmd run test:browser"
+    },
+    "evidence": {
+        "crudFullFlow": "tests/Browser/workspace.spec.ts",
+        "failurePaths": "tests/Browser/trash.spec.ts"
+    }
+}

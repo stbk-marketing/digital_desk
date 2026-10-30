@@ -11,6 +11,16 @@ async function login(page: Page, name = 'anna') {
     ).toBeVisible();
 }
 
+async function search(page: Page, query: string) {
+    await page
+        .getByRole('button', { name: 'Suche öffnen', exact: true })
+        .click();
+    await page.getByLabel('Alle Aufgaben durchsuchen').fill(query);
+    await page
+        .getByRole('button', { name: 'Ergebnisse anzeigen', exact: true })
+        .click();
+}
+
 test('project autosave, project capture and task dates remain independent', async ({
     page,
 }) => {
@@ -45,15 +55,24 @@ test('project autosave, project capture and task dates remain independent', asyn
         page.getByText('Wird gespeichert …', { exact: true }),
     ).toHaveCount(0);
     const row = page.locator('.task-row').filter({
-        has: page.locator('input[value="Einzelfrist des Firmen-Events"]'),
+        has: page
+            .getByLabel('Aufgabentitel', { exact: true })
+            .filter({ hasText: 'Einzelfrist des Firmen-Events' }),
     });
-    await expect(row.getByLabel('Projekt zuordnen')).toHaveValue(
-        await page.getByLabel('Projektfilter').inputValue(),
-    );
-    await row.getByLabel('Frist', { exact: true }).fill('2026-10-25');
+    await expect(
+        row.getByText('Firmen-Event Abnahme', { exact: true }),
+    ).toBeVisible();
+    await row
+        .getByRole('button', { name: 'Details: Einzelfrist des Firmen-Events' })
+        .click();
+    await page
+        .getByRole('complementary', { name: 'Aufgabendetails' })
+        .getByLabel('Frist', { exact: true })
+        .fill('2026-10-25');
     await expect(
         page.getByText('Wird gespeichert …', { exact: true }),
     ).toHaveCount(0);
+    await page.getByRole('button', { name: 'Schließen', exact: true }).click();
     await page.getByRole('button', { name: 'Kalender', exact: true }).click();
     await expect(
         page.getByRole('button', {
@@ -143,7 +162,7 @@ test('conflict preserves local text through polling and explicit retry', async (
     await expect(
         page.getByText('Wird gespeichert …', { exact: true }),
     ).toHaveCount(0);
-    await page.getByLabel('Alle Aufgaben durchsuchen').fill('Konflikttest');
+    await search(page, 'Konflikttest');
     await expect(page.getByLabel('Aufgabentitel', { exact: true })).toHaveCount(
         1,
     );
@@ -187,9 +206,7 @@ test('conflict preserves local text through polling and explicit retry', async (
     await expect(
         page.getByText('Nicht synchronisiert.', { exact: true }),
     ).toHaveCount(0);
-    await page
-        .getByLabel('Alle Aufgaben durchsuchen')
-        .fill('Mein lokaler Text');
+    await search(page, 'Mein lokaler Text');
     await expect(page.getByLabel('Aufgabentitel', { exact: true })).toHaveValue(
         'Mein lokaler Text',
     );
@@ -204,8 +221,8 @@ test('two browser sessions synchronize capture, completion, reopening and histor
     const b = await contextB.newPage();
     await login(a);
     await login(b, 'britta');
-    await a.getByLabel('Alle Aufgaben durchsuchen').fill('9100');
-    await b.getByLabel('Alle Aufgaben durchsuchen').fill('9100');
+    await search(a, '9100');
+    await search(b, '9100');
     await expect(a.getByLabel('Aufgabentitel', { exact: true })).toHaveCount(0);
     await expect(b.getByLabel('Aufgabentitel', { exact: true })).toHaveCount(0);
     await a
@@ -220,7 +237,7 @@ test('two browser sessions synchronize capture, completion, reopening and histor
         a.getByText('Wird gespeichert …', { exact: true }),
     ).toHaveCount(0);
     await a.reload();
-    await a.getByLabel('Alle Aufgaben durchsuchen').fill('9100');
+    await search(a, '9100');
     await expect(a.getByLabel('Aufgabentitel', { exact: true })).toHaveCount(1);
     await expect(a.getByLabel('Aufgabentitel', { exact: true })).toHaveValue(
         'Klamotten Filiale 9100 Jarmen packen',
@@ -231,7 +248,7 @@ test('two browser sessions synchronize capture, completion, reopening and histor
     );
     await b.getByRole('checkbox', { name: /Klamotten.*erledigen/ }).click();
     await a.bringToFront();
-    await a.getByLabel('Alle Aufgaben durchsuchen').fill('9100');
+    await search(a, '9100');
     await expect(
         a.getByRole('checkbox', { name: /Klamotten.*wieder öffnen/ }),
     ).toBeChecked();
@@ -273,7 +290,7 @@ test('failed capture remains visible and can be retried; keyboard and mobile sta
     ).toBeVisible();
     await expect(
         page.locator(
-            'input[aria-label="Aufgabentitel"][value="Offline Entwurf erhalten"]',
+            'textarea[aria-label="Aufgabentitel"]:text-is("Offline Entwurf erhalten")',
         ),
     ).toHaveValue('Offline Entwurf erhalten');
     await page.unroute('**/api/workspace/tasks');

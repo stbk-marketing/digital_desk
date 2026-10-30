@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="250" height="760" viewBox="0 0 250 760" fill="none" aria-hidden="true">
+  <defs><filter id="soft"><feGaussianBlur stdDeviation="4"/></filter><linearGradient id="leaf"><stop stop-color="#adc184"/><stop offset="1" stop-color="#42634b"/></linearGradient></defs>
+  <g filter="url(#soft)" opacity=".9">
+    <path d="M-30 740C98 567 69 379 177 108M-10 683C80 628 129 524 253 391" stroke="#95a879" stroke-width="5"/>
+    <g fill="url(#leaf)">
+      <path d="M45 629C-17 619-35 548-26 491C32 508 64 552 45 629Z"/>
+      <path d="M60 575C87 513 146 501 179 509C155 559 119 595 60 575Z"/>
+      <path d="M78 486C24 460 15 405 26 362C72 382 95 426 78 486Z"/>
+      <path d="M91 432C123 367 166 364 200 371C179 417 143 443 91 432Z"/>
+      <path d="M113 338C59 313 58 262 68 225C106 245 128 286 113 338Z"/>
+      <path d="M135 269C173 207 209 217 239 225C213 265 179 286 135 269Z"/>
+      <path d="M159 183C120 157 115 115 124 78C160 103 178 139 159 183Z"/>
+      <path d="M102 605C107 551 93 529 71 509C54 557 65 587 102 605Z"/>
+      <path d="M154 531C197 548 227 533 247 506C204 487 175 494 154 531Z"/>
+      <path d="M195 471C178 430 185 401 209 374C238 421 231 449 195 471Z"/>
+    </g>
+  </g>
+</svg>
